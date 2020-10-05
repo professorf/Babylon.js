@@ -28,7 +28,7 @@ Node.AddNodeConstructor("ArcRotateCamera", (name, scene) => {
  *
  * This camera always points towards a given target position and can be rotated around that target with the target as the centre of rotation. It can be controlled with cursors and mouse, or with touch events.
  * Think of this camera as one orbiting its target position, or more imaginatively as a spy satellite orbiting the earth. Its position relative to the target (earth) can be set by three parameters, alpha (radians) the longitudinal rotation, beta (radians) the latitudinal rotation and radius the distance from the target position.
- * @see http://doc.babylonjs.com/babylon101/cameras#arc-rotate-camera
+ * @see https://doc.babylonjs.com/babylon101/cameras#arc-rotate-camera
  */
 export class ArcRotateCamera extends TargetCamera {
     /**
@@ -56,6 +56,7 @@ export class ArcRotateCamera extends TargetCamera {
     /**
      * Defines the target point of the camera.
      * The camera looks towards it form the radius distance.
+     * Please note that you can set the target to a mesh and thus the target will be copied from mesh.position
      */
     public get target(): Vector3 {
         return this._target;
@@ -74,9 +75,6 @@ export class ArcRotateCamera extends TargetCamera {
     public set position(newPosition: Vector3) {
         this.setPosition(newPosition);
     }
-
-    @serializeAsVector3("upVector")
-    protected _upVector = Vector3.Up();
 
     protected _upToYMatrix: Matrix;
     protected _YToUpMatrix: Matrix;
@@ -509,7 +507,7 @@ export class ArcRotateCamera extends TargetCamera {
 
     /**
      * Gets the bouncing behavior of the camera if it has been enabled.
-     * @see http://doc.babylonjs.com/how_to/camera_behaviors#bouncing-behavior
+     * @see https://doc.babylonjs.com/how_to/camera_behaviors#bouncing-behavior
      */
     public get bouncingBehavior(): Nullable<BouncingBehavior> {
         return this._bouncingBehavior;
@@ -517,7 +515,7 @@ export class ArcRotateCamera extends TargetCamera {
 
     /**
      * Defines if the bouncing behavior of the camera is enabled on the camera.
-     * @see http://doc.babylonjs.com/how_to/camera_behaviors#bouncing-behavior
+     * @see https://doc.babylonjs.com/how_to/camera_behaviors#bouncing-behavior
      */
     public get useBouncingBehavior(): boolean {
         return this._bouncingBehavior != null;
@@ -541,7 +539,7 @@ export class ArcRotateCamera extends TargetCamera {
 
     /**
      * Gets the framing behavior of the camera if it has been enabled.
-     * @see http://doc.babylonjs.com/how_to/camera_behaviors#framing-behavior
+     * @see https://doc.babylonjs.com/how_to/camera_behaviors#framing-behavior
      */
     public get framingBehavior(): Nullable<FramingBehavior> {
         return this._framingBehavior;
@@ -549,7 +547,7 @@ export class ArcRotateCamera extends TargetCamera {
 
     /**
      * Defines if the framing behavior of the camera is enabled on the camera.
-     * @see http://doc.babylonjs.com/how_to/camera_behaviors#framing-behavior
+     * @see https://doc.babylonjs.com/how_to/camera_behaviors#framing-behavior
      */
     public get useFramingBehavior(): boolean {
         return this._framingBehavior != null;
@@ -573,7 +571,7 @@ export class ArcRotateCamera extends TargetCamera {
 
     /**
      * Gets the auto rotation behavior of the camera if it has been enabled.
-     * @see http://doc.babylonjs.com/how_to/camera_behaviors#autorotation-behavior
+     * @see https://doc.babylonjs.com/how_to/camera_behaviors#autorotation-behavior
      */
     public get autoRotationBehavior(): Nullable<AutoRotationBehavior> {
         return this._autoRotationBehavior;
@@ -581,7 +579,7 @@ export class ArcRotateCamera extends TargetCamera {
 
     /**
      * Defines if the auto rotation behavior of the camera is enabled on the camera.
-     * @see http://doc.babylonjs.com/how_to/camera_behaviors#autorotation-behavior
+     * @see https://doc.babylonjs.com/how_to/camera_behaviors#autorotation-behavior
      */
     public get useAutoRotationBehavior(): boolean {
         return this._autoRotationBehavior != null;
@@ -613,14 +611,14 @@ export class ArcRotateCamera extends TargetCamera {
 
     /**
      * Defines whether the camera should check collision with the objects oh the scene.
-     * @see http://doc.babylonjs.com/babylon101/cameras,_mesh_collisions_and_gravity#how-can-i-do-this
+     * @see https://doc.babylonjs.com/babylon101/cameras,_mesh_collisions_and_gravity#how-can-i-do-this
      */
     public checkCollisions = false;
 
     /**
      * Defines the collision radius of the camera.
      * This simulates a sphere around the camera.
-     * @see http://doc.babylonjs.com/babylon101/cameras,_mesh_collisions_and_gravity#arcrotatecamera
+     * @see https://doc.babylonjs.com/babylon101/cameras,_mesh_collisions_and_gravity#arcrotatecamera
      */
     public collisionRadius = new Vector3(0.5, 0.5, 0.5);
 
@@ -1012,6 +1010,10 @@ export class ArcRotateCamera extends TargetCamera {
             sinb = 0.0001;
         }
 
+        if (this.radius === 0) {
+            this.radius = 0.0001; // Just to avoid division by zero
+        }
+
         var target = this._getTargetPosition();
         this._computationVector.copyFromFloats(this.radius * cosa * sinb, this.radius * cosb, this.radius * sina * sinb);
 
@@ -1153,6 +1155,7 @@ export class ArcRotateCamera extends TargetCamera {
         rigCam._cameraRigParams = {};
         rigCam.isRigCamera = true;
         rigCam.rigParent = this;
+        rigCam.upVector = this.upVector;
         return rigCam;
     }
 

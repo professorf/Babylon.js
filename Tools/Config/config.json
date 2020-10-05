@@ -61,6 +61,11 @@
         "viewer",
         "nodeEditor"
     ],
+    "apps": [
+        "playground",
+        "sandbox",
+        "ktx2Decoder"
+    ],
     "lintModules": [
         "core",
         "materialsLibrary",
@@ -142,7 +147,8 @@
             },
             "es6": {
                 "packageName": "@babylonjs/core",
-                "readme": "readme-es6.md"
+                "readme": "readme-es6.md",
+                "license": "license.md"
             }
         }
     },
@@ -633,6 +639,34 @@
                 "typings": "babylon.nodeEditor.module.d.ts",
                 "index": "babylon.nodeEditor.max.js"
             }
+        }
+    },
+    "ktx2Decoder": {
+        "tempFileName": "babylon.ktx2Decoder.js",
+        "distFile": "/dist/preview release/babylon.ktx2Decoder.js",
+        "build": {
+            "ignoreInWorkerMode": true,
+            "ignoreInTestMode": true,
+            "distOutputDirectory": "../../dist/preview release/",
+            "mainFolder": "./ktx2Decoder/"
+        }
+    },
+    "playground": {
+        "distFile": "/Playground/dist/babylon.playground.js",
+        "build": {
+            "ignoreInWorkerMode": true,
+            "ignoreInTestMode": true,
+            "distOutputDirectory": "../../Playground/dist/",
+            "mainFolder": "./Playground/"
+        }
+    },
+    "sandbox": {
+        "distFile": "/sandbox/public/dist/babylon.sandbox.js",
+        "build": {
+            "ignoreInWorkerMode": true,
+            "ignoreInTestMode": true,
+            "distOutputDirectory": "../../sandbox/public/dist/",
+            "mainFolder": "./sandbox/"
         }
     },
     "viewer": {

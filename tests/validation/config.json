@@ -1,6 +1,22 @@
 ﻿{
     "root": "https://cdn.babylonjs.com",
-    "tests": [     
+    "tests": [   
+        {
+            "title": "Procedural texture with NME",       
+            "renderCount": 10,
+            "playgroundId": "#8S19ZC#1",            
+            "referenceImage": "procedural_nme.png"
+        },   
+        {
+            "title": "EXT_texture_webp",
+            "playgroundId": "#LSAUH2#2",            
+            "referenceImage": "webp.png"
+        }, 
+        {
+            "title": "CSGVertColor",
+            "playgroundId": "#R0H1IX#0",            
+            "referenceImage": "csgVertColor.png"
+        },
         {
             "title": "Particle subemitters",
             "playgroundId": "#1LK70I#20",            
@@ -62,6 +78,11 @@
             "referenceImage": "node-material6.png"
         },    
         {
+            "title": "Node material PBR 1",
+            "playgroundId": "#D8AK3Z#15",
+            "referenceImage": "node-material-pbr-1.png"
+        },    
+        {
             "title": "Basis loader",
             "playgroundId": "#4RN0VF#0",
             "referenceImage": "basis.png"
@@ -110,7 +131,7 @@
         },
         {
             "title": "Camera rig",
-            "playgroundId": "#ATL1CS#11",
+            "playgroundId": "#ATL1CS#12",
             "referenceImage": "cameraRig.png"
         },
         {
@@ -139,7 +160,7 @@
         },
         {
             "title": "Simulate pointer",
-            "playgroundId": "#8MGKWK#196",
+            "playgroundId": "#8MGKWK#269",
             "referenceImage": "simulatePointer.png"
         },
         {
@@ -318,6 +339,12 @@
             "replace": "updateVerticesDataDirectly, updateVerticesData"
         },
         {
+            "title": "Capsule",
+            "renderCount": 10,
+            "playgroundId": "#JAFIIU#2",
+            "referenceImage": "CreateCapsule.png"
+        },
+        {
             "title": "Bones",
             "scriptToRun": "/Demos/Bones/bones.js",
             "functionToCall": "CreateBonesTestScene",
@@ -352,11 +379,21 @@
             "referenceImage": "advancedShadows.png"
         },
         {
+            "title": "Advanced shadows (right handed)",
+            "renderCount": 20,
+            "playgroundId": "#B48X7G#32",
+            "referenceImage": "advancedShadows2.png"
+        },
+        {
             "title": "point light shadows",
-            "scriptToRun": "/Demos/PointLightShadowMap/pointLightShadows.js",
-            "functionToCall": "CreatePointLightShadowScene",
-            "referenceImage": "pointLightShadows.png",
-            "replace": "/ground, /Ground"
+            "playgroundId": "#XDNVAY#1",
+            "referenceImage": "pointLightShadows.png"
+        },
+        {
+            "title": "Shadow depth wrappers",
+            "playgroundId": "#PNQRY1#9",
+            "referenceImage": "shadowDepthWrappers.png",
+            "renderCount": 20
         },
         {
             "title": "Displacement map",
@@ -562,6 +599,18 @@
             "referenceImage": "gltfTextureSampler1.png"
         },
         {
+            "title": "GLTF Sheen",
+            "playgroundId": "#YG3BBF#2",
+            "referenceImage": "glTFSheen.png"
+        },
+        {
+            "title": "GLTF ClearCoat",
+            "playgroundId": "#YG3BBF#4",
+            "referenceImage": "glTFClearCoat.png",
+            "renderCount": 50,
+            "excludeFromAutomaticTesting": true
+        },
+        {
             "title": "GLTF Serializer with Negative World Matrix",
             "playgroundId": "#KX53VK#35",
             "referenceImage": "glTFSerializerNegativeWorldMatrix.png",
@@ -572,6 +621,26 @@
             "playgroundId": "#KX53VK#36",
             "referenceImage": "glTFSerializerNegativeWorldMatrix_Right.png",
             "errorRatio": 1.1
+        },
+        {
+            "title": "GLTF Serializer Skinning and Animation",
+            "playgroundId": "#DMZBX1#1",
+            "referenceImage": "gltfSerializerSkinningAndAnimation.png"
+        },
+        {
+            "title": "GLTF Serializer Skinning and Animation (Right Handed)",
+            "playgroundId": "#DMZBX1#2",
+            "referenceImage": "gltfSerializerSkinningAndAnimation.png"
+        },
+        {
+            "title": "GLTF Serializer Morph Target Animation",
+            "playgroundId": "#84M2SR#23",
+            "referenceImage": "gltfSerializerMorphTargetAnimation.png"
+        },
+        {
+            "title": "GLTF Serializer Morph Target Animation Group",
+            "playgroundId": "#T087A8#27",
+            "referenceImage": "gltfSerializerMorphTargetAnimationGroup.png"
         },
         {
             "title": "GLTF Buggy with Draco Mesh Compression",
@@ -668,12 +737,12 @@
         },
         {
             "title": "PBR",
-            "playgroundId": "#LCA0Q4#0",
+            "playgroundId": "#LCA0Q4#27",
             "referenceImage": "pbr.png"
         },
         {
             "title": "PBR refraction",
-            "playgroundId": "#LCA0Q4#25",
+            "playgroundId": "#LCA0Q4#26",
             "referenceImage": "pbr_refraction.png"
         },
         {
@@ -752,6 +821,11 @@
             "referenceImage": "instancedBones.png"
         },
         {
+            "title": "Thin Instances",
+            "playgroundId": "#V1JE4Z#1",
+            "referenceImage": "thinInstances.png"
+        },
+        {
             "title": "Light Projection Texture",
             "playgroundId": "#CQNGRK#0",
             "referenceImage": "LightProjectionTexture.png"
@@ -818,6 +892,55 @@
             "title": "Visibility",
             "playgroundId": "#PXC9CF#2",
             "referenceImage": "visibility.png"
+        },
+        {
+            "title": "GLTF Extension EXT_mesh_gpu_instancing",
+            "playgroundId": "#QFIGLW#9",
+            "renderCount": 10,
+            "referenceImage": "gltfExtensionExtMeshGpuInstancingTest.png"
+        },
+        {
+            "title": "Realtime Filtering",
+            "playgroundId": "#FEEK7G#118",
+            "referenceImage": "realtimeFiltering.png"
+        },
+        {
+            "title": "GLTF Extension KHR_materials_variants",
+            "playgroundId": "#BKGTKL#3",
+            "referenceImage": "gltfExtensionKhrMaterialsVariants.png"
+        },
+        {
+            "title": "OBJ loader test",
+            "playgroundId": "#SYQW69#311",
+            "referenceImage": "objTestLoader.png",
+            "renderCount": 10
+        },
+        {
+            "title": "KTX2 decoder test",
+            "playgroundId": "#EIJH8L#1",
+            "referenceImage": "ktx2decoder.png",
+            "excludeFromAutomaticTesting": true
+        },
+        {
+            "title": "Motion Blur",
+            "playgroundId": "#E5YGEL#2",
+            "referenceImage": "motionBlur.png",
+            "renderCount": 10,
+            "excludeFromAutomaticTesting": true
+        },
+        {
+            "title": "Screen space reflections",
+            "playgroundId": "#PIZ1GK#172",
+            "referenceImage": "ssr.png",
+            "renderCount": 10,
+            "excludeFromAutomaticTesting": true
+        },
+        {
+            "title": "Geometry buffer renderer",
+            "playgroundId": "#PIZ1GK#173",
+            "referenceImage": "geometrybufferrenderer.png",
+            "renderCount": 10,
+            "excludeFromAutomaticTesting": true
         }
     ]
 }

@@ -1,5 +1,5 @@
 import { GraphNode } from './graphNode';
-import { GraphCanvasComponent } from './graphCanvas';
+import { GraphCanvasComponent, FramePortData } from './graphCanvas';
 import { Nullable } from 'babylonjs/types';
 import { Observer, Observable } from 'babylonjs/Misc/observable';
 import { NodeLink } from './nodeLink';
@@ -51,12 +51,16 @@ export class GraphFrame {
     private _ownerCanvas: GraphCanvasComponent;
     private _mouseStartPointX: Nullable<number> = null;
     private _mouseStartPointY: Nullable<number> = null;
-    private _onSelectionChangedObserver: Nullable<Observer<Nullable<GraphNode | NodeLink | GraphFrame | NodePort>>>;
+    private _onSelectionChangedObserver: Nullable<Observer<Nullable<GraphFrame | GraphNode | NodeLink | NodePort | FramePortData>>>;
     private _onGraphNodeRemovalObserver: Nullable<Observer<GraphNode>>; 
+    private _onExposePortOnFrameObserver: Nullable<Observer<GraphNode>>;
+    private _onNodeLinkDisposedObservers: Nullable<Observer<NodeLink>>[] = [];
     private _isCollapsed = false;
     private _frameInPorts: FrameNodePort[] = [];
     private _frameOutPorts: FrameNodePort[] = [];
     private _controlledPorts: NodePort[] = []; // Ports on Nodes that are shown on outside of frame
+    private _exposedInPorts: NodePort[] = [];
+    private _exposedOutPorts: NodePort[] = [];
     private _id: number;
     private _comments: string;
     private _frameIsResizing: boolean;
@@ -80,18 +84,235 @@ export class GraphFrame {
     }
 
     private _createInputPort(port: NodePort, node: GraphNode) {
-        let localPort = FrameNodePort.CreateFrameNodePortElement(port.connectionPoint, node, this._inputPortContainer, null, this._ownerCanvas.globalState, true, GraphFrame._FramePortCounter++)
+        let localPort = FrameNodePort.CreateFrameNodePortElement(port.connectionPoint, node, this._inputPortContainer, null, this._ownerCanvas.globalState, true, GraphFrame._FramePortCounter++, this.id);
         this._frameInPorts.push(localPort);
 
         port.delegatedPort = localPort;
         this._controlledPorts.push(port);
-        localPort.onFramePortMoveUpObservable.add((nodePort: FrameNodePort) => {
-                this.moveFramePortUp(nodePort);
+
+        port.exposedPortPosition = this._exposedInPorts.findIndex(nodePort => nodePort === port);
+        if(port.exposedPortPosition < 0) {
+            this._exposedInPorts.push(port);
+            port.exposedPortPosition = this._exposedInPorts.length -1;
+        }
+    }
+
+    // Mark ports with FramePortPosition for re-arrangement support
+    private _markFramePortPositions() {
+        // mark FrameInPorts 
+         if(this._frameInPorts.length == 2){
+            this._frameInPorts[0].framePortPosition = FramePortPosition.Top;
+            this._frameInPorts[1].framePortPosition = FramePortPosition.Bottom;
+        } else {
+            for(let i = 0; i < this._frameInPorts.length; i++) {
+                const port = this._frameInPorts[i];
+                if(i === 0){
+                    port.framePortPosition = FramePortPosition.Top;
+                } else if(i === this._frameInPorts.length -1){
+                    port.framePortPosition = FramePortPosition.Bottom;
+                } else {
+                    port.framePortPosition = FramePortPosition.Middle;
+                }
+            }
+        }
+
+        // mark FrameOutPorts
+        if(this._frameOutPorts.length == 2){
+            this._frameOutPorts[0].framePortPosition = FramePortPosition.Top;
+            this._frameOutPorts[1].framePortPosition = FramePortPosition.Bottom;
+        } else {
+            for(let i = 0; i < this._frameOutPorts.length; i++) {
+                const port = this._frameOutPorts[i];
+                if(i === 0){
+                    port.framePortPosition = FramePortPosition.Top
+                } else if(i === this._frameInPorts.length -1){
+                    port.framePortPosition = FramePortPosition.Bottom
+                } else {
+                    port.framePortPosition = FramePortPosition.Middle
+                }
+            }
+        }
+    }
+
+    private _createFramePorts() {
+
+        for (var node of this._nodes) {
+            node.isVisible = false;
+        }
+
+        for (var i = 0; i < this._exposedOutPorts.length; ) { // Output
+            var port = this._exposedOutPorts[i];
+            if(port.node === null || port.node.enclosingFrameId != this.id) {
+                if(this.removePortFromExposedWithNode(port, this._exposedOutPorts))
+                    continue;
+            }
+            else {
+                if(!this.createOutputPorts(port, port.node) && this.removePortFromExposedWithNode(port, this._exposedOutPorts)) {
+                    continue;
+                }
+            }
+            ++i;
+        }
+
+        for (var i = 0; i < this._exposedInPorts.length; ) { // Input
+            var port = this._exposedInPorts[i];
+            if(port.node === null || port.node.enclosingFrameId != this.id) {
+                if(this.removePortFromExposedWithNode(port, this._exposedInPorts)) {
+                    continue;
+                }
+            }
+            else {
+                if(!this.createInputPorts(port, port.node) && this.removePortFromExposedWithNode(port, this._exposedInPorts)) {
+                    continue;
+                }
+            }
+            ++i;
+        }
+
+        for (var node of this._nodes) {
+            for (let port of node.outputPorts) { // Output
+                port.exposedPortPosition = this._exposedOutPorts.findIndex(nodePort => nodePort === port);
+                if(port.exposedPortPosition < 0) {
+                    if(this.createOutputPorts(port,node)) {
+                        port.node.enclosingFrameId = this.id;
+                        this._exposedOutPorts.push(port);
+                        port.exposedPortPosition = this._exposedOutPorts.length - 1;
+                    }
+                }
+            }
+            for (var port of node.inputPorts) { // Input
+                port.exposedPortPosition = this._exposedInPorts.findIndex(nodePort => nodePort === port);
+                if(port.exposedPortPosition < 0){
+                    this.createInputPorts(port, node);
+                }
+            }
+        }
+    }
+
+    private removePortFromExposedWithNode(port: NodePort,exposedPorts: NodePort[])
+    {
+        let index = exposedPorts.findIndex(nodePort => nodePort === port);
+        if(index >= 0) {
+            exposedPorts.splice(index,1)
+            port.exposedPortPosition = -1;
+            return true;
+        }
+        return false;
+    }
+
+    private removePortFromExposedWithLink(nodeLink: NodeLink, exposedPorts: NodePort[])
+    {
+        let aPort = exposedPorts.findIndex(nodePort => nodePort === nodeLink.portA);
+        let bPort = exposedPorts.findIndex(nodePort => nodePort === nodeLink.portB);
+        if(aPort >= 0) {
+            exposedPorts.splice(aPort,1);
+            nodeLink.portA.exposedPortPosition = -1;
+        } else if(bPort >= 0) {
+            exposedPorts.splice(bPort,1);
+            if(nodeLink.portB){ 
+                nodeLink.portB.exposedPortPosition = -1
+            }
+        }
+    }
+    
+    private createInputPorts(port: NodePort, node: GraphNode){
+        if (port.connectionPoint.isConnected) {
+            let portAdded = false;
+            for (var link of node.links) {
+                if (link.portB === port && this.nodes.indexOf(link.nodeA) === -1) {
+                    this._createInputPort(port, node);
+                    link.isVisible = true;
+                    portAdded = true;
+                    const onLinkDisposedObserver = link.onDisposedObservable.add((nodeLink: NodeLink) => {
+                        this.removePortFromExposedWithLink(nodeLink, this._exposedInPorts);
+                        this._redrawFramePorts();
+                    });
+                    this._onNodeLinkDisposedObservers.push(onLinkDisposedObserver);
+                }
+            }
+            if(portAdded) return true;
+        } 
+        else if(port.exposedOnFrame) {
+            this._createInputPort(port, node);
+            return true;
+        }
+        return false;
+    }
+
+    private createOutputPorts(port: NodePort, node: GraphNode){
+        if (port.connectionPoint.hasEndpoints) {
+            let portAdded = false;
+            for (var link of node.links) {
+                if (link.portA === port && this.nodes.indexOf(link.nodeB!) === -1) {
+                    let localPort: FrameNodePort;
+
+                    if (!portAdded) {
+                        portAdded = true;
+                        localPort = FrameNodePort.CreateFrameNodePortElement(port.connectionPoint, link.nodeA!, this._outputPortContainer, null, this._ownerCanvas.globalState, false, GraphFrame._FramePortCounter++, this.id);
+                        this._frameOutPorts.push(localPort);
+
+                        link.isVisible = true;
+
+                        const onLinkDisposedObserver = link.onDisposedObservable.add((nodeLink: NodeLink) => {
+                            this.removePortFromExposedWithLink(nodeLink, this._exposedOutPorts);
+                            this._redrawFramePorts();
+                        });
+
+                        this._onNodeLinkDisposedObservers.push(onLinkDisposedObserver); 
+
+                    } else if (this.nodes.indexOf(link.nodeB!) === -1) {
+                        link.isVisible = true;
+                        localPort = this.ports.filter(p => p.connectionPoint === port.connectionPoint)[0];
+                    } else {
+                        localPort = this.ports.filter(p => p.connectionPoint === port.connectionPoint)[0];
+                    }
+                    port.delegatedPort = localPort;
+                    this._controlledPorts.push(port);
+                }
+                else if(port.exposedPortPosition >= 0 && !portAdded)
+                {
+                    let localPort = FrameNodePort.CreateFrameNodePortElement(port.connectionPoint, node, this._outputPortContainer, null, this._ownerCanvas.globalState, false, GraphFrame._FramePortCounter++, this.id);
+                    this._frameOutPorts.push(localPort);
+                    port.delegatedPort = localPort;
+                    this._controlledPorts.push(port);
+                    portAdded = true;
+                }
+            }
+            if(portAdded)  return true;
+        } 
+        else if(port.exposedOnFrame) {
+            let localPort = FrameNodePort.CreateFrameNodePortElement(port.connectionPoint, node, this._outputPortContainer, null, this._ownerCanvas.globalState, false, GraphFrame._FramePortCounter++, this.id);
+            this._frameOutPorts.push(localPort);
+            port.delegatedPort = localPort;
+            this._controlledPorts.push(port);
+            return true;
+        }
+
+        return false;
+    }
+
+    private _redrawFramePorts() {
+        if(!this.isCollapsed) {
+            return;
+        }
+
+        this._outputPortContainer.innerHTML = "";
+        this._inputPortContainer.innerHTML = "";
+        this.ports.forEach((framePort:FrameNodePort) => {
+            framePort.dispose();
         });
 
-        localPort.onFramePortMoveDownObservable.add((nodePort: FrameNodePort) => {
-                this.moveFramePortDown(nodePort);
+        this._controlledPorts.forEach(port => {
+            port.delegatedPort = null;
+            port.refresh();
         })
+
+        this._frameInPorts = [];
+        this._frameOutPorts = [];
+        this._controlledPorts = [];
+
+        this._createFramePorts();
+        this.ports.forEach((framePort: FrameNodePort) => framePort.node._refreshLinks());
     }
 
     public set isCollapsed(value: boolean) {
@@ -108,88 +329,9 @@ export class GraphFrame {
 
             this._moveFrame((this.width - this.CollapsedWidth) / 2, 0);
 
-            for (var node of this._nodes) {
-                node.isVisible = false;
-                for (var port of node.outputPorts) { // Output
-                    if (port.connectionPoint.hasEndpoints) {
-                        let portAdded = false;
+            this._createFramePorts()
 
-                        for (var link of node.links) {
-                            if (link.portA === port && this.nodes.indexOf(link.nodeB!) === -1) {
-                                let localPort: FrameNodePort;
-
-                                if (!portAdded) {
-                                    portAdded = true;
-                                    localPort = FrameNodePort.CreateFrameNodePortElement(port.connectionPoint, link.nodeB!, this._outputPortContainer, null, this._ownerCanvas.globalState, false, GraphFrame._FramePortCounter++);
-                                    this._frameOutPorts.push(localPort);
-
-                                    localPort.onFramePortMoveUpObservable.add((nodePort: FrameNodePort) => {
-                                            this.moveFramePortUp(nodePort);
-                                    });
-                            
-                                    localPort.onFramePortMoveDownObservable.add((nodePort: FrameNodePort) => {
-                                            this.moveFramePortDown(nodePort);
-                                    })
-                                } else {
-                                    localPort = this.ports.filter(p => p.connectionPoint === port.connectionPoint)[0];
-                                }
-
-                                port.delegatedPort = localPort;
-                                this._controlledPorts.push(port);
-                                link.isVisible = false;
-                            }
-                        }
-                    } else {
-                        let localPort = FrameNodePort.CreateFrameNodePortElement(port.connectionPoint, node, this._outputPortContainer, null, this._ownerCanvas.globalState, false, GraphFrame._FramePortCounter++)
-                        this._frameOutPorts.push(localPort);
-                        port.delegatedPort = localPort;
-                        this._controlledPorts.push(port);
-
-                        localPort.onFramePortMoveUpObservable.add((nodePort: FrameNodePort) => {
-                                this.moveFramePortUp(nodePort);
-                        });
-                
-                        localPort.onFramePortMoveDownObservable.add((nodePort: FrameNodePort) => {
-                                this.moveFramePortDown(nodePort);
-                        });
-                    }
-                }
-
-                for (var port of node.inputPorts) { // Input
-                    if (port.connectionPoint.isConnected) {
-                        for (var link of node.links) {
-                            if (link.portB === port && this.nodes.indexOf(link.nodeA) === -1) {
-                                this._createInputPort(port, node);
-                                link.isVisible = true;
-                            }
-                        }
-                    } else {
-                        this._createInputPort(port, node);
-                    }
-                }
-            }
-
-            for(let i = 0; i < this._frameInPorts.length; i++) {
-                const port = this._frameInPorts[i];
-                if(i === 0){
-                    port.framePortPosition = FramePortPosition.Top;
-                } else if(i === this._frameInPorts.length -1){
-                    port.framePortPosition = FramePortPosition.Bottom;
-                } else {
-                    port.framePortPosition = FramePortPosition.Middle;
-                }
-            }
-
-            for(let i = 0; i < this._frameOutPorts.length; i++) {
-                const port = this._frameOutPorts[i];
-                if(i === 0){
-                    port.framePortPosition = FramePortPosition.Top
-                } else if(i === this._frameInPorts.length -1){
-                    port.framePortPosition = FramePortPosition.Bottom
-                } else {
-                    port.framePortPosition = FramePortPosition.Middle
-                }
-            }
+            this._markFramePortPositions()
 
         } else {
             this.element.classList.remove("collapsed");
@@ -212,6 +354,7 @@ export class GraphFrame {
             this._frameInPorts = [];
             this._frameOutPorts = [];
             this._controlledPorts = [];
+            this._onNodeLinkDisposedObservers = [];
 
             for (var node of this._nodes) {
                 node.isVisible = true;
@@ -233,7 +376,7 @@ export class GraphFrame {
         }
 
         this.onExpandStateChanged.notifyObservers(this);
-    }
+    }     
 
     public get nodes() {
         return this._nodes;
@@ -341,7 +484,7 @@ export class GraphFrame {
         }
 
         if (comments === "" || (comments && comments.length >= 0)) {
-            this._commentsElement.innerText = comments;
+            (this._commentsElement.children[0] as HTMLSpanElement).innerText = comments;
         }
         this.height = this._borderElement.offsetHeight;
         this._comments = comments;
@@ -491,14 +634,25 @@ export class GraphFrame {
             if (index === -1) {
                 return;
             } else {
+                node.enclosingFrameId = -1;
                 this._nodes.splice(index, 1);
             }
+        });
+
+        this._onExposePortOnFrameObserver = canvas.globalState.onExposePortOnFrameObservable.add((node: GraphNode) => {
+            if (this.nodes.indexOf(node) === -1) {
+                return;
+            }
+            this._redrawFramePorts();
         });
 
         this._commentsElement = document.createElement('div');
         this._commentsElement.className = 'frame-comments';
         this._commentsElement.style.color = 'white';
         this._commentsElement.style.fontSize = '16px';
+        let commentSpan = document.createElement('span');
+        commentSpan.className = "frame-comment-span"
+        this._commentsElement.appendChild(commentSpan)
 
         this.element.appendChild(this._commentsElement);
 
@@ -523,8 +677,8 @@ export class GraphFrame {
 
     public removeNode(node: GraphNode) {
         let index = this.nodes.indexOf(node);
-
         if (index > -1) {
+            node.enclosingFrameId = -1;
             this.nodes.splice(index, 1);
         }
     }
@@ -617,24 +771,30 @@ export class GraphFrame {
         evt.stopPropagation();
     }
 
-    private moveFramePortUp(nodePort: FrameNodePort){
+    public moveFramePortUp(nodePort: FrameNodePort){
+        let elementsArray: ChildNode[];
         if(nodePort.isInput) {
             if(this._inputPortContainer.children.length < 2) {
                 return;
             }
-            const elementsArray = Array.from(this._inputPortContainer.childNodes);
-            this._movePortUp(elementsArray, nodePort);
+            elementsArray = Array.from(this._inputPortContainer.childNodes);
+            const indexInContainer = this._frameInPorts.findIndex(framePort => framePort === nodePort);
+            [this._exposedInPorts[indexInContainer -1], this._exposedInPorts[indexInContainer]] = [this._exposedInPorts[indexInContainer], this._exposedInPorts[indexInContainer -1]]; // swap idicies
+            this._movePortUp(elementsArray, nodePort, this._frameInPorts);
+           
         } else {
             if(this._outputPortContainer.children.length < 2) {
                 return;
             }
-            const elementsArray = Array.from(this._outputPortContainer.childNodes);
-            this._movePortUp(elementsArray, nodePort);
+            elementsArray = Array.from(this._outputPortContainer.childNodes);
+            const indexInContainer = this._frameOutPorts.findIndex(framePort => framePort === nodePort);
+            [this._exposedOutPorts[indexInContainer -1], this._exposedOutPorts[indexInContainer]] = [this._exposedOutPorts[indexInContainer], this._exposedOutPorts[indexInContainer -1]]; // swap idicies
+            this._movePortUp(elementsArray, nodePort, this._frameOutPorts);
         }
-
+        this.ports.forEach((framePort: FrameNodePort) => framePort.node._refreshLinks());
     }
 
-    private _movePortUp(elementsArray: ChildNode[], nodePort: FrameNodePort) {
+    private _movePortUp(elementsArray: ChildNode[], nodePort: FrameNodePort, framePortList: FrameNodePort[]) {
         // update UI
         const indexInElementArray = (elementsArray as HTMLElement[]).findIndex(elem => elem.dataset.framePortId === `${nodePort.framePortId}`)
         if(indexInElementArray === 0){
@@ -645,34 +805,52 @@ export class GraphFrame {
         firstPortElement.parentElement?.insertBefore(secondPortElement, firstPortElement);
 
         // update Frame Port Container
-        const indexInContainer = this._frameInPorts.findIndex(framePort => framePort === nodePort);
-        [this._frameInPorts[indexInContainer -1], this._frameInPorts[indexInContainer]] = [this._frameInPorts[indexInContainer], this._frameInPorts[indexInContainer -1]]; // swap idicies
+        const indexInContainer = framePortList.findIndex(framePort => framePort === nodePort);
+        [framePortList[indexInContainer -1], framePortList[indexInContainer]] = [framePortList[indexInContainer], framePortList[indexInContainer -1]]; // swap idicies
         
-        // notify nodePort if it is now at Top (indexInElementArray === 1)
-        if (indexInElementArray === 1) {
-            nodePort.onFramePortPositionChangedObservable.notifyObservers(FramePortPosition.Top);
+        //special case framePortList.length == 2
+        if(framePortList.length == 2) {
+            framePortList[1].framePortPosition = FramePortPosition.Bottom;
+            framePortList[0].framePortPosition = FramePortPosition.Top;
         } else {
-            nodePort.onFramePortPositionChangedObservable.notifyObservers(FramePortPosition.Middle);
+            // notify nodePort if it is now at Top (indexInElementArray === 1)
+            if (indexInElementArray === 1) {
+                framePortList[1].framePortPosition = FramePortPosition.Middle;
+                framePortList[0].framePortPosition = FramePortPosition.Top;
+            } else if(indexInContainer === elementsArray.length-1) {
+                framePortList[framePortList.length -1].framePortPosition = FramePortPosition.Bottom;
+                framePortList[framePortList.length -2].framePortPosition = FramePortPosition.Middle;
+            } else {
+                nodePort.framePortPosition = FramePortPosition.Middle;
+            }
         }
     }
     
-    private moveFramePortDown(nodePort: FrameNodePort){
+    public moveFramePortDown(nodePort: FrameNodePort){
+        let elementsArray: ChildNode[];
         if(nodePort.isInput) {
             if(this._inputPortContainer.children.length < 2) {
                 return;
             }
-            const elementsArray = Array.from(this._inputPortContainer.childNodes);
-            this._movePortDown(elementsArray, nodePort);
+            elementsArray = Array.from(this._inputPortContainer.childNodes);
+            const indexInContainer = this._frameInPorts.findIndex(framePort => framePort === nodePort);
+            [this._exposedInPorts[indexInContainer], this._exposedInPorts[indexInContainer + 1]] = [this._exposedInPorts[indexInContainer + 1], this._exposedInPorts[indexInContainer]]; // swap idicies
+            this._movePortDown(elementsArray, nodePort, this._frameInPorts);
+            
         } else {
             if(this._outputPortContainer.children.length < 2) {
                 return;
             }
-            const elementsArray = Array.from(this._outputPortContainer.childNodes);
-            this._movePortDown(elementsArray, nodePort);
+            elementsArray = Array.from(this._outputPortContainer.childNodes);
+            const indexInContainer = this._frameOutPorts.findIndex(framePort => framePort === nodePort);
+            [this._exposedOutPorts[indexInContainer], this._exposedOutPorts[indexInContainer + 1]] = [this._exposedOutPorts[indexInContainer + 1], this._exposedOutPorts[indexInContainer]]; // swap idicies
+            this._movePortDown(elementsArray, nodePort, this._frameOutPorts);
         }
+
+        this.ports.forEach((framePort: FrameNodePort) => framePort.node._refreshLinks());
     }
 
-    private _movePortDown(elementsArray: ChildNode[], nodePort: FrameNodePort) {
+    private _movePortDown(elementsArray: ChildNode[], nodePort: FrameNodePort, framePortList: FrameNodePort[]) {
         // update UI
         const indexInElementArray = (elementsArray as HTMLElement[]).findIndex(elem => elem.dataset.framePortId === `${nodePort.framePortId}`)
         if(indexInElementArray === elementsArray.length -1){
@@ -683,16 +861,24 @@ export class GraphFrame {
         firstPort.parentElement?.insertBefore(secondPort, firstPort);
 
         // update Frame Port Container
-        const indexInContainer = this._frameInPorts.findIndex(framePort => framePort === nodePort);
-        [this._frameInPorts[indexInContainer], this._frameInPorts[indexInContainer + 1]] = [this._frameInPorts[indexInContainer + 1], this._frameInPorts[indexInContainer]]; // swap idicies
+        const indexInContainer = framePortList.findIndex(framePort => framePort === nodePort);
+        [framePortList[indexInContainer], framePortList[indexInContainer + 1]] = [framePortList[indexInContainer + 1], framePortList[indexInContainer]]; // swap idicies
 
         // notify nodePort if it is now at bottom (indexInContainer === elementsArray.length-2)
-        if(indexInContainer === elementsArray.length-2) {
-            nodePort.onFramePortPositionChangedObservable.notifyObservers(FramePortPosition.Bottom);
+        if(framePortList.length == 2) {
+            framePortList[0].framePortPosition = FramePortPosition.Top;
+            framePortList[1].framePortPosition = FramePortPosition.Bottom;
         } else {
-            nodePort.onFramePortPositionChangedObservable.notifyObservers(FramePortPosition.Middle);
-        }
-
+            if(indexInContainer === elementsArray.length-2) {
+                framePortList[elementsArray.length-2].framePortPosition = FramePortPosition.Middle;
+                framePortList[elementsArray.length-1].framePortPosition = FramePortPosition.Bottom;
+            } else if(indexInContainer === 0){
+                framePortList[0].framePortPosition = FramePortPosition.Top;
+                framePortList[1].framePortPosition = FramePortPosition.Middle;
+            } else {
+                nodePort.framePortPosition = FramePortPosition.Middle;
+            }
+         }
     }
 
     private initResizing = (evt: PointerEvent) => {
@@ -1191,24 +1377,49 @@ export class GraphFrame {
     }
 
     public dispose() {
-        this.isCollapsed = false;
+        if(this.isCollapsed) {
+            while(this._nodes.length > 0) {
+                this._nodes[0].dispose();
+            }
+            this.isCollapsed = false;
+        }
+        else {
+            this._nodes.forEach(node => {
+                node.enclosingFrameId = -1;
+            });
+        }
 
         if (this._onSelectionChangedObserver) {
             this._ownerCanvas.globalState.onSelectionChangedObservable.remove(this._onSelectionChangedObserver);
-        }
+        };
 
         if(this._onGraphNodeRemovalObserver) {
             this._ownerCanvas.globalState.onGraphNodeRemovalObservable.remove(this._onGraphNodeRemovalObserver);
-        }
+        };
 
-        this.element.parentElement!.removeChild(this.element);
+        if(this._onExposePortOnFrameObserver) {
+            this._ownerCanvas.globalState.onExposePortOnFrameObservable.remove(this._onExposePortOnFrameObserver);
+        };
+
+        this.element.parentElement?.removeChild(this.element);
 
         this._ownerCanvas.frames.splice(this._ownerCanvas.frames.indexOf(this), 1);
 
         this.onExpandStateChanged.clear();
     }
 
+    private serializePortData(exposedPorts: NodePort[])
+    {
+        if(exposedPorts.length > 0) {
+            for(let i = 0; i < exposedPorts.length; ++i) {
+                exposedPorts[i].exposedPortPosition = i;
+            }
+        }
+    }
+
     public serialize(): IFrameData {
+        this.serializePortData(this._exposedInPorts);
+        this.serializePortData(this._exposedOutPorts);
         return {
             x: this._x,
             y: this._y,
@@ -1216,7 +1427,7 @@ export class GraphFrame {
             height: this._height,
             color: this._color.asArray(),
             name: this.name,
-            isCollapsed: this.isCollapsed,
+            isCollapsed: true, //keeping closed to make reimporting cleaner
             blocks: this.nodes.map(n => n.block.uniqueId),
             comments: this._comments
         }
@@ -1224,7 +1435,7 @@ export class GraphFrame {
 
     public export() {
         const state = this._ownerCanvas.globalState;
-        const json = SerializationTools.Serialize(state.nodeMaterial, state, this.nodes.map(n => n.block));
+        const json = SerializationTools.Serialize(state.nodeMaterial, state, this);
         StringTools.DownloadAsFile(state.hostDocument, json, this._name + ".json");
     }
 
@@ -1244,17 +1455,35 @@ export class GraphFrame {
             for (var blockId of serializationData.blocks) {
                 let actualId = map[blockId];
                 let node = canvas.nodes.filter(n => n.block.uniqueId === actualId);
-
+                
                 if (node.length) {
                     newFrame.nodes.push(node[0]);
+                    node[0].enclosingFrameId = newFrame.id;
                 }
             }
         } else {
             newFrame.refresh();
         }
+        
+        for (var node of newFrame.nodes) {
+            for (var port of node.outputPorts) { // Output
+                if(port.exposedOnFrame) {
+                    if(port.exposedPortPosition !== -1) {
+                        newFrame._exposedOutPorts[port.exposedPortPosition] = port;
+                    }
+                }
+            }
+
+            for (var port of node.inputPorts) { // Inports
+                if(port.exposedOnFrame) {
+                    if(port.exposedPortPosition !== -1) {
+                         newFrame._exposedInPorts[port.exposedPortPosition] = port;
+                    }
+                }
+            }
+        }
 
         newFrame.isCollapsed = isCollapsed;
-
         if (isCollapsed) {
             canvas._frameIsMoving = true;
             newFrame._moveFrame(-(newFrame.width - newFrame.CollapsedWidth) / 2, 0);

@@ -1,14 +1,15 @@
 import { Nullable } from "../types";
-import { Vector2, Vector3 } from "../Maths/math.vector";
+import { Vector2, Vector3, Matrix } from "../Maths/math.vector";
 import { Color3, Color4 } from '../Maths/math.color';
-import { AbstractMesh } from "../Meshes/abstractMesh";
 import { BaseTexture } from "../Materials/Textures/baseTexture";
-import { Texture } from "../Materials/Textures/texture";
 import { BoxParticleEmitter, IParticleEmitterType, PointParticleEmitter, HemisphericParticleEmitter, SphereParticleEmitter, SphereDirectedParticleEmitter, CylinderParticleEmitter, ConeParticleEmitter } from "../Particles/EmitterTypes/index";
 import { Scene } from "../scene";
 import { ColorGradient, FactorGradient, Color3Gradient } from "../Misc/gradients";
+import { Effect } from "../Materials/effect";
+import { Observable } from "../Misc/observable";
 
 declare type Animation = import("../Animations/animation").Animation;
+declare type AbstractMesh = import("../Meshes/abstractMesh").AbstractMesh;
 
 /**
  * Interface representing a particle system in Babylon.js.
@@ -58,7 +59,7 @@ export interface IParticleSystem {
     /**
      * The texture used to render each particle. (this can be a spritesheet)
      */
-    particleTexture: Nullable<Texture>;
+    particleTexture: Nullable<BaseTexture>;
 
     /**
      * Blend mode use to render the particle, it can be either ParticleSystem.BLENDMODE_ONEONE, ParticleSystem.BLENDMODE_STANDARD or ParticleSystem.BLENDMODE_ADD.
@@ -250,6 +251,9 @@ export interface IParticleSystem {
     /** Snippet ID if the particle system was created from the snippet server */
     snippetId: string;
 
+    /** Gets or sets a matrix to use to compute projection */
+    defaultProjectionMatrix: Matrix;
+
     /**
      * Gets the maximum number of particles active at the same time.
      * @returns The max number of active particles.
@@ -282,6 +286,14 @@ export interface IParticleSystem {
      * @param disposeTexture defines if the particule texture must be disposed as well (true by default)
      */
     dispose(disposeTexture?: boolean): void;
+    /**
+    * An event triggered when the system is disposed
+    */
+    onDisposeObservable: Observable<IParticleSystem>;
+    /**
+    * An event triggered when the system is stopped
+    */
+   onStoppedObservable: Observable<IParticleSystem>;
     /**
      * Clones the particle system.
      * @param name The name of the cloned object
@@ -335,6 +347,40 @@ export interface IParticleSystem {
      * @returns a string containing the class name
      */
     getClassName(): string;
+    /**
+     * Gets the custom effect used to render the particles
+     * @param blendMode Blend mode for which the effect should be retrieved
+     * @returns The effect
+     */
+    getCustomEffect(blendMode: number): Nullable<Effect>;
+    /**
+     * Sets the custom effect used to render the particles
+     * @param effect The effect to set
+     * @param blendMode Blend mode for which the effect should be set
+     */
+    setCustomEffect(effect: Nullable<Effect>, blendMode: number): void;
+
+    /**
+     * Fill the defines array according to the current settings of the particle system
+     * @param defines Array to be updated
+     * @param blendMode blend mode to take into account when updating the array
+     */
+    fillDefines(defines: Array<string>, blendMode: number): void;
+    /**
+     * Fill the uniforms, attributes and samplers arrays according to the current settings of the particle system
+     * @param uniforms Uniforms array to fill
+     * @param attributes Attributes array to fill
+     * @param samplers Samplers array to fill
+     */
+    fillUniformsAttributesAndSamplerNames(uniforms: Array<string>, attributes: Array<string>, samplers: Array<string>): void;
+    /**
+     * Observable that will be called just before the particles are drawn
+     */
+    onBeforeDrawParticlesObservable: Observable<Nullable<Effect>>;
+    /**
+     * Gets the name of the particle vertex shader
+     */
+    vertexShaderName: string;
 
     /**
      * Adds a new color gradient
@@ -541,7 +587,7 @@ export interface IParticleSystem {
     getRampGradients(): Nullable<Array<Color3Gradient>>;
 
     /** Gets or sets a boolean indicating that ramp gradients must be used
-     * @see http://doc.babylonjs.com/babylon101/particles#ramp-gradients
+     * @see https://doc.babylonjs.com/babylon101/particles#ramp-gradients
      */
     useRampGradients: boolean;
 
@@ -651,5 +697,5 @@ export interface IParticleSystem {
      * Get hosting scene
      * @returns the scene
      */
-    getScene(): Scene;
+    getScene(): Nullable<Scene>;
 }

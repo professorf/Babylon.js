@@ -515,7 +515,15 @@ export class _GLTFMaterialExporter {
                 tempTexture.dispose();
 
                 // Read data from WebGL
-                const canvas = engine.getRenderingCanvas();
+                const canvas0 = engine.getRenderingCanvas();
+
+                let canvas: Nullable<HTMLCanvasElement> = document.createElement("canvas");
+
+                canvas.width = canvas0?.width ?? 0;
+                canvas.height = canvas0?.height ?? 0;
+
+                var destCtx = canvas.getContext('2d');
+                destCtx!.drawImage(canvas0!, 0, 0);
 
                 if (canvas) {
                     if (!canvas.toBlob) { // fallback for browsers without "canvas.toBlob"
@@ -524,6 +532,7 @@ export class _GLTFMaterialExporter {
                     }
                     else {
                         Tools.ToBlob(canvas, (blob) => {
+                            canvas = null;
                             if (blob) {
                                 let fileReader = new FileReader();
                                 fileReader.onload = (event: any) => {
@@ -536,7 +545,7 @@ export class _GLTFMaterialExporter {
                             else {
                                 reject("gltfMaterialExporter: Failed to get blob from image canvas!");
                             }
-                        });
+                        }, mimeType);
                     }
                 }
                 else {
@@ -1138,7 +1147,7 @@ export class _GLTFMaterialExporter {
         return this._finishMaterial(promises, glTFMaterial, babylonPBRMaterial, mimeType);
     }
 
-    private getPixelsFromTexture(babylonTexture: BaseTexture): Uint8Array | Float32Array {
+    private getPixelsFromTexture(babylonTexture: BaseTexture): Nullable<Uint8Array | Float32Array> {
         const pixels = babylonTexture.textureType === Constants.TEXTURETYPE_UNSIGNED_INT ? babylonTexture.readPixels() as Uint8Array : babylonTexture.readPixels() as Float32Array;
         return pixels;
     }
@@ -1170,6 +1179,11 @@ export class _GLTFMaterialExporter {
                 return this._textureMap[textureUid];
             }
             else {
+                const pixels = this.getPixelsFromTexture(babylonTexture);
+                if (!pixels) {
+                    return null;
+                }
+
                 const samplers = this._exporter._samplers;
                 const sampler = this._getGLTFTextureSampler(babylonTexture);
                 let samplerIndex: Nullable<number> = null;
@@ -1184,6 +1198,7 @@ export class _GLTFMaterialExporter {
                         break;
                     }
                 }
+
                 if (foundSamplerIndex == null) {
                     samplers.push(sampler);
                     samplerIndex = samplers.length - 1;
@@ -1191,8 +1206,20 @@ export class _GLTFMaterialExporter {
                 else {
                     samplerIndex = foundSamplerIndex;
                 }
-                const pixels = this.getPixelsFromTexture(babylonTexture);
                 const size = babylonTexture.getSize();
+
+                // Preserve texture mime type if defined
+                if ((babylonTexture as Texture).mimeType) {
+                    switch ((babylonTexture as Texture).mimeType) {
+                        case "image/jpeg":
+                            mimeType = ImageMimeType.JPEG;
+                            break;
+                        case "image/png":
+                            mimeType = ImageMimeType.PNG;
+                            break;
+                    }
+
+                }
 
                 return this._createBase64FromCanvasAsync(pixels, size.width, size.height, mimeType).then((base64Data) => {
                     const textureInfo = this._getTextureInfoFromBase64(base64Data, babylonTexture.name.replace(/\.\/|\/|\.\\|\\/g, "_"), mimeType, babylonTexture.coordinatesIndex, samplerIndex);

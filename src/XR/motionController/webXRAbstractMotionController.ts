@@ -1,17 +1,17 @@
-import { IDisposable, Scene } from '../../scene';
-import { WebXRControllerComponent } from './webXRControllerComponent';
-import { Observable } from '../../Misc/observable';
-import { Logger } from '../../Misc/logger';
-import { SceneLoader } from '../../Loading/sceneLoader';
-import { AbstractMesh } from '../../Meshes/abstractMesh';
-import { Nullable } from '../../types';
-import { Quaternion, Vector3 } from '../../Maths/math.vector';
-import { Mesh } from '../../Meshes/mesh';
+import { IDisposable, Scene } from "../../scene";
+import { WebXRControllerComponent } from "./webXRControllerComponent";
+import { Observable } from "../../Misc/observable";
+import { Logger } from "../../Misc/logger";
+import { SceneLoader } from "../../Loading/sceneLoader";
+import { AbstractMesh } from "../../Meshes/abstractMesh";
+import { Nullable } from "../../types";
+import { Quaternion, Vector3 } from "../../Maths/math.vector";
+import { Mesh } from "../../Meshes/mesh";
 
 /**
- * Handness type in xrInput profiles. These can be used to define layouts in the Layout Map.
+ * Handedness type in xrInput profiles. These can be used to define layouts in the Layout Map.
  */
-export type MotionControllerHandness = "none" | "left" | "right";
+export type MotionControllerHandedness = "none" | "left" | "right";
 /**
  * The type of components available in motion controllers.
  * This is not the name of the component.
@@ -95,13 +95,13 @@ export interface IMotionControllerLayout {
                      * Max movement node
                      */
                     maxNodeName?: string;
-                }
-            }
+                };
+            };
             /**
              * If touch enabled, what is the name of node to display user feedback
              */
             touchPointNodeName?: string;
-        }
+        };
     };
     /**
      * Is it xr standard mapping or not
@@ -122,9 +122,9 @@ export interface IMotionControllerLayout {
  */
 export interface IMotionControllerLayoutMap {
     /**
-     * Layouts with handness type as a key
+     * Layouts with handedness type as a key
      */
-    [handness: string /* handness */]: IMotionControllerLayout;
+    [handedness: string /* handedness */]: IMotionControllerLayout;
 }
 
 /**
@@ -138,7 +138,7 @@ export interface IMotionControllerProfile {
      */
     fallbackProfileIds: string[];
     /**
-     * The layout map, with handness as key
+     * The layout map, with handedness as key
      */
     layouts: IMotionControllerLayoutMap;
     /**
@@ -186,7 +186,7 @@ export interface IMotionControllerMeshMap {
     /**
      * The mesh that will be changed when axis value changes
      */
-    valueMesh: AbstractMesh;
+    valueMesh?: AbstractMesh;
 }
 
 /**
@@ -202,8 +202,8 @@ export interface IMinimalMotionControllerObject {
      */
     buttons: Array<{
         /**
-        * Value of the button/trigger
-        */
+         * Value of the button/trigger
+         */
         value: number;
         /**
          * If the button/trigger is currently touched
@@ -214,6 +214,13 @@ export interface IMinimalMotionControllerObject {
          */
         pressed: boolean;
     }>;
+
+    /**
+     * EXPERIMENTAL haptic support.
+     */
+    hapticActuators?: Array<{
+        pulse: (value: number, duration: number) => Promise<boolean>;
+    }>;
 }
 
 /**
@@ -223,7 +230,9 @@ export interface IMinimalMotionControllerObject {
  */
 export abstract class WebXRAbstractMotionController implements IDisposable {
     private _initComponent = (id: string) => {
-        if (!id) { return; }
+        if (!id) {
+            return;
+        }
         const componentDef = this.layout.components[id];
         const type = componentDef.type;
         const buttonIndex = componentDef.gamepadIndices.button;
@@ -234,7 +243,7 @@ export abstract class WebXRAbstractMotionController implements IDisposable {
         }
 
         this.components[id] = new WebXRControllerComponent(id, type, buttonIndex, axes);
-    }
+    };
 
     private _modelReady: boolean = false;
 
@@ -243,7 +252,7 @@ export abstract class WebXRAbstractMotionController implements IDisposable {
      * Components have a ComponentType and can also have both button and axis definitions
      */
     public readonly components: {
-        [id: string]: WebXRControllerComponent
+        [id: string]: WebXRControllerComponent;
     } = {};
 
     /**
@@ -268,19 +277,22 @@ export abstract class WebXRAbstractMotionController implements IDisposable {
      * @param scene the scene to which the model of the controller will be added
      * @param layout The profile layout to load
      * @param gamepadObject The gamepad object correlating to this controller
-     * @param handness handness (left/right/none) of this controller
+     * @param handedness handedness (left/right/none) of this controller
      * @param _doNotLoadControllerMesh set this flag to ignore the mesh loading
      */
-    constructor(protected scene: Scene, protected layout: IMotionControllerLayout,
+    constructor(
+        protected scene: Scene,
+        protected layout: IMotionControllerLayout,
         /**
          * The gamepad object correlating to this controller
          */
         public gamepadObject: IMinimalMotionControllerObject,
         /**
-         * handness (left/right/none) of this controller
+         * handedness (left/right/none) of this controller
          */
-        public handness: MotionControllerHandness,
-        _doNotLoadControllerMesh: boolean = false) {
+        public handedness: MotionControllerHandedness,
+        _doNotLoadControllerMesh: boolean = false
+    ) {
         // initialize the components
         if (layout.components) {
             Object.keys(layout.components).forEach(this._initComponent);
@@ -304,7 +316,9 @@ export abstract class WebXRAbstractMotionController implements IDisposable {
      * @return an array of components with this type
      */
     public getAllComponentsOfType(type: MotionControllerComponentType): WebXRControllerComponent[] {
-        return this.getComponentIds().map((id) => this.components[id]).filter((component) => component.type === type);
+        return this.getComponentIds()
+            .map((id) => this.components[id])
+            .filter((component) => component.type === type);
     }
 
     /**
@@ -356,21 +370,29 @@ export abstract class WebXRAbstractMotionController implements IDisposable {
             loadingParams = this._getFilenameAndPath();
         }
         return new Promise((resolve, reject) => {
-            SceneLoader.ImportMesh("", loadingParams.path, loadingParams.filename, this.scene, (meshes: AbstractMesh[]) => {
-                if (useGeneric) {
-                    this._getGenericParentMesh(meshes);
-                } else {
-                    this._setRootMesh(meshes);
+            SceneLoader.ImportMesh(
+                "",
+                loadingParams.path,
+                loadingParams.filename,
+                this.scene,
+                (meshes: AbstractMesh[]) => {
+                    if (useGeneric) {
+                        this._getGenericParentMesh(meshes);
+                    } else {
+                        this._setRootMesh(meshes);
+                    }
+                    this._processLoadedModel(meshes);
+                    this._modelReady = true;
+                    this.onModelLoadedObservable.notifyObservers(this);
+                    resolve(true);
+                },
+                null,
+                (_scene: Scene, message: string) => {
+                    Logger.Log(message);
+                    Logger.Warn(`Failed to retrieve controller model of type ${this.profileId} from the remote server: ${loadingParams.path}${loadingParams.filename}`);
+                    reject(message);
                 }
-                this._processLoadedModel(meshes);
-                this._modelReady = true;
-                this.onModelLoadedObservable.notifyObservers(this);
-                resolve(true);
-            }, null, (_scene: Scene, message: string) => {
-                Logger.Log(message);
-                Logger.Warn(`Failed to retrieve controller model of type ${this.profileId} from the remote server: ${loadingParams.path}${loadingParams.filename}`);
-                reject(message);
-            });
+            );
         });
     }
 
@@ -383,14 +405,39 @@ export abstract class WebXRAbstractMotionController implements IDisposable {
         this.updateModel(xrFrame);
     }
 
+    /**
+     * Backwards compatibility due to a deeply-integrated typo
+     */
+    public get handness() {
+        return this.handedness;
+    }
+
+    /**
+     * Pulse (vibrate) this controller
+     * If the controller does not support pulses, this function will fail silently and return Promise<false> directly after called
+     * Consecutive calls to this function will cancel the last pulse call
+     *
+     * @param value the strength of the pulse in 0.0...1.0 range
+     * @param duration Duration of the pulse in milliseconds
+     * @param hapticActuatorIndex optional index of actuator (will usually be 0)
+     * @returns a promise that will send true when the pulse has ended and false if the device doesn't support pulse or an error accrued
+     */
+    public pulse(value: number, duration: number, hapticActuatorIndex: number = 0): Promise<boolean> {
+        if (this.gamepadObject.hapticActuators && this.gamepadObject.hapticActuators[hapticActuatorIndex]) {
+            return this.gamepadObject.hapticActuators[hapticActuatorIndex].pulse(value, duration);
+        } else {
+            return Promise.resolve(false);
+        }
+    }
+
     // Look through all children recursively. This will return null if no mesh exists with the given name.
-    protected _getChildByName(node: AbstractMesh, name: string): AbstractMesh {
-        return <AbstractMesh>node.getChildren((n) => n.name === name, false)[0];
+    protected _getChildByName(node: AbstractMesh, name: string): AbstractMesh | undefined {
+        return <AbstractMesh | undefined>node.getChildren((n) => n.name === name, false)[0];
     }
 
     // Look through only immediate children. This will return null if no mesh exists with the given name.
-    protected _getImmediateChildByName(node: AbstractMesh, name: string): AbstractMesh {
-        return <AbstractMesh>node.getChildren((n) => n.name == name, true)[0];
+    protected _getImmediateChildByName(node: AbstractMesh, name: string): AbstractMesh | undefined {
+        return <AbstractMesh | undefined>node.getChildren((n) => n.name == name, true)[0];
     }
 
     /**
@@ -400,7 +447,7 @@ export abstract class WebXRAbstractMotionController implements IDisposable {
      * @hidden
      */
     protected _lerpTransform(axisMap: IMotionControllerMeshMap, axisValue: number, fixValueCoordinates?: boolean): void {
-        if (!axisMap.minMesh || !axisMap.maxMesh) {
+        if (!axisMap.minMesh || !axisMap.maxMesh || !axisMap.valueMesh) {
             return;
         }
 
@@ -410,16 +457,8 @@ export abstract class WebXRAbstractMotionController implements IDisposable {
 
         // Convert from gamepad value range (-1 to +1) to lerp range (0 to 1)
         let lerpValue = fixValueCoordinates ? axisValue * 0.5 + 0.5 : axisValue;
-        Quaternion.SlerpToRef(
-            axisMap.minMesh.rotationQuaternion,
-            axisMap.maxMesh.rotationQuaternion,
-            lerpValue,
-            axisMap.valueMesh.rotationQuaternion);
-        Vector3.LerpToRef(
-            axisMap.minMesh.position,
-            axisMap.maxMesh.position,
-            lerpValue,
-            axisMap.valueMesh.position);
+        Quaternion.SlerpToRef(axisMap.minMesh.rotationQuaternion, axisMap.maxMesh.rotationQuaternion, lerpValue, axisMap.valueMesh.rotationQuaternion);
+        Vector3.LerpToRef(axisMap.minMesh.position, axisMap.maxMesh.position, lerpValue, axisMap.valueMesh.position);
     }
 
     /**
@@ -437,7 +476,7 @@ export abstract class WebXRAbstractMotionController implements IDisposable {
      * Get the filename and path for this controller's model
      * @returns a map of filename and path
      */
-    protected abstract _getFilenameAndPath(): { filename: string, path: string };
+    protected abstract _getFilenameAndPath(): { filename: string; path: string };
     /**
      * This function is called before the mesh is loaded. It checks for loading constraints.
      * For example, this function can check if the GLB loader is available
@@ -462,15 +501,15 @@ export abstract class WebXRAbstractMotionController implements IDisposable {
      */
     protected abstract _updateModel(xrFrame: XRFrame): void;
 
-    private _getGenericFilenameAndPath(): { filename: string, path: string } {
+    private _getGenericFilenameAndPath(): { filename: string; path: string } {
         return {
             filename: "generic.babylon",
-            path: "https://controllers.babylonjs.com/generic/"
+            path: "https://controllers.babylonjs.com/generic/",
         };
     }
 
     private _getGenericParentMesh(meshes: AbstractMesh[]): void {
-        this.rootMesh = new Mesh(this.profileId + " " + this.handness, this.scene);
+        this.rootMesh = new Mesh(this.profileId + " " + this.handedness, this.scene);
 
         meshes.forEach((mesh) => {
             if (!mesh.parent) {

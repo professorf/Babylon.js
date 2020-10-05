@@ -10,6 +10,7 @@ uniform Material
     uniform vec3 vReflectivityInfos;
     uniform vec2 vMicroSurfaceSamplerInfos;
     uniform vec2 vReflectionInfos;
+    uniform vec2 vReflectionFilteringInfo;
     uniform vec3 vReflectionPosition;
     uniform vec3 vReflectionSize;
     uniform vec3 vBumpInfos;
@@ -33,10 +34,15 @@ uniform Material
 
     uniform float visibility;
 
+    uniform vec4 vMetallicReflectanceFactors;
+    uniform vec2 vMetallicReflectanceInfos;
+    uniform mat4 metallicReflectanceMatrix;
+
     uniform vec2 vClearCoatParams;
     uniform vec4 vClearCoatRefractionParams;
-    uniform vec2 vClearCoatInfos;
+    uniform vec4 vClearCoatInfos;
     uniform mat4 clearCoatMatrix;
+    uniform mat4 clearCoatRoughnessMatrix;
     uniform vec2 vClearCoatBumpInfos;
     uniform vec2 vClearCoatTangentSpaceParams;
     uniform mat4 clearCoatBumpMatrix;
@@ -51,10 +57,12 @@ uniform Material
 
     uniform vec4 vSheenColor;
     uniform float vSheenRoughness;
-    uniform vec2 vSheenInfos;
+    uniform vec4 vSheenInfos;
     uniform mat4 sheenMatrix;
+    uniform mat4 sheenRoughnessMatrix;
 
     uniform vec3 vRefractionMicrosurfaceInfos;
+    uniform vec2 vRefractionFilteringInfo;
     uniform vec4 vRefractionInfos;
     uniform mat4 refractionMatrix;
     uniform vec2 vThicknessInfos;
@@ -63,6 +71,10 @@ uniform Material
     uniform vec3 vDiffusionDistance;
     uniform vec4 vTintColor;
     uniform vec3 vSubSurfaceIntensity;
+    uniform float scatteringDiffusionProfile;
+
+    uniform vec4 vDetailInfos;
+    uniform mat4 detailMatrix;
 };
 
 uniform Scene {

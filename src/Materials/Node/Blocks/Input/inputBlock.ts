@@ -13,6 +13,26 @@ import { _TypeStore } from '../../../../Misc/typeStore';
 import { Color3, Color4 } from '../../../../Maths/math';
 import { AnimatedInputBlockTypes } from './animatedInputBlockTypes';
 import { Observable } from '../../../../Misc/observable';
+import { MaterialHelper } from '../../../../Materials/materialHelper';
+
+const remapAttributeName: { [name: string]: string }  = {
+    "position2d": "position",
+    "particle_uv": "vUV",
+    "particle_color": "vColor",
+    "particle_texturemask": "textureMask",
+    "particle_positionw": "vPositionW",
+};
+
+const attributeInFragmentOnly: { [name: string]: boolean }  = {
+    "particle_uv": true,
+    "particle_color": true,
+    "particle_texturemask": true,
+    "particle_positionw": true,
+};
+
+const attributeAsUniform: { [name: string]: boolean }  = {
+    "particle_texturemask": true,
+};
 
 /**
  * Block used to expose an input value
@@ -39,9 +59,6 @@ export class InputBlock extends NodeMaterialBlock {
 
     /** @hidden */
     public _systemValue: Nullable<NodeMaterialSystemValues> = null;
-
-    /** Gets or sets a boolean indicating that this input can be edited in the Inspector (false by default) */
-    public visibleInInspector = false;
 
     /** Gets or sets a boolean indicating that the value of this input will not change after a build */
     public isConstant = false;
@@ -90,10 +107,13 @@ export class InputBlock extends NodeMaterialBlock {
                     case "position":
                     case "normal":
                     case "tangent":
+                    case "particle_positionw":
                         this._type = NodeMaterialBlockConnectionPointTypes.Vector3;
                         return this._type;
                     case "uv":
                     case "uv2":
+                    case "position2d":
+                    case "particle_uv":
                         this._type = NodeMaterialBlockConnectionPointTypes.Vector2;
                         return this._type;
                     case "matricesIndices":
@@ -105,6 +125,8 @@ export class InputBlock extends NodeMaterialBlock {
                         this._type = NodeMaterialBlockConnectionPointTypes.Vector4;
                         return this._type;
                     case "color":
+                    case "particle_color":
+                    case "particle_texturemask":
                         this._type = NodeMaterialBlockConnectionPointTypes.Color4;
                         return this._type;
                 }
@@ -153,6 +175,18 @@ export class InputBlock extends NodeMaterialBlock {
     }
 
     /**
+    * Validates if a name is a reserve word.
+    * @param newName the new name to be given to the node.
+    * @returns false if the name is a reserve word, else true.
+    */
+    public validateBlockName(newName: string) {
+        if (!this.isAttribute) {
+            return super.validateBlockName(newName);
+        }
+        return true;
+    }
+
+    /**
      * Gets the output component
      */
     public get output(): NodeMaterialConnectionPoint {
@@ -165,10 +199,10 @@ export class InputBlock extends NodeMaterialBlock {
      * @returns the current connection point
      */
     public setAsAttribute(attributeName?: string): InputBlock {
+        this._mode = NodeMaterialBlockConnectionPointMode.Attribute;
         if (attributeName) {
             this.name = attributeName;
         }
-        this._mode = NodeMaterialBlockConnectionPointMode.Attribute;
         return this;
     }
 
@@ -391,6 +425,11 @@ export class InputBlock extends NodeMaterialBlock {
         return "";
     }
 
+    /** @hidden */
+    public get _noContextSwitch(): boolean {
+        return attributeInFragmentOnly[this.name];
+    }
+
     private _emit(state: NodeMaterialBuildState, define?: string) {
         // Uniforms
         if (this.isUniform) {
@@ -442,10 +481,18 @@ export class InputBlock extends NodeMaterialBlock {
 
         // Attribute
         if (this.isAttribute) {
-            this.associatedVariableName = this.name;
+            this.associatedVariableName = remapAttributeName[this.name] ?? this.name;
 
             if (this.target === NodeMaterialBlockTargets.Vertex && state._vertexState) { // Attribute for fragment need to be carried over by varyings
-                this._emit(state._vertexState, define);
+                if (attributeInFragmentOnly[this.name]) {
+                    if (attributeAsUniform[this.name]) {
+                        state._emitUniformFromString(this.associatedVariableName, state._getGLType(this.type), define);
+                    } else {
+                        state._emitVaryingFromString(this.associatedVariableName, state._getGLType(this.type), define);
+                    }
+                } else {
+                    this._emit(state._vertexState, define);
+                }
                 return;
             }
 
@@ -454,12 +501,21 @@ export class InputBlock extends NodeMaterialBlock {
             }
 
             state.attributes.push(this.associatedVariableName);
-            if (define) {
-                state._attributeDeclaration += this._emitDefine(define);
-            }
-            state._attributeDeclaration += `attribute ${state._getGLType(this.type)} ${this.associatedVariableName};\r\n`;
-            if (define) {
-                state._attributeDeclaration += `#endif\r\n`;
+
+            if (attributeInFragmentOnly[this.name]) {
+                if (attributeAsUniform[this.name]) {
+                    state._emitUniformFromString(this.associatedVariableName, state._getGLType(this.type), define);
+                } else {
+                    state._emitVaryingFromString(this.associatedVariableName, state._getGLType(this.type), define);
+                }
+            } else {
+                if (define) {
+                    state._attributeDeclaration += this._emitDefine(define);
+                }
+                state._attributeDeclaration += `attribute ${state._getGLType(this.type)} ${this.associatedVariableName};\r\n`;
+                if (define) {
+                    state._attributeDeclaration += `#endif\r\n`;
+                }
             }
         }
     }
@@ -507,7 +563,7 @@ export class InputBlock extends NodeMaterialBlock {
                     effect.setMatrix(variableName, scene.getTransformMatrix());
                     break;
                 case NodeMaterialSystemValues.CameraPosition:
-                    effect.setVector3(variableName, scene.activeCamera!.globalPosition);
+                    MaterialHelper.BindEyePosition(effect, scene, variableName);
                     break;
                 case NodeMaterialSystemValues.FogColor:
                     effect.setColor3(variableName, scene.fogColor);
@@ -617,7 +673,6 @@ export class InputBlock extends NodeMaterialBlock {
             // Common Property "Type"
             codes.push(
                 `${variableName}.isConstant = ${this.isConstant}`,
-                `${variableName}.visibleInInspector = ${this.visibleInInspector}`
             );
 
             codes.push('');
@@ -640,7 +695,6 @@ export class InputBlock extends NodeMaterialBlock {
         serializationObject.mode = this._mode;
         serializationObject.systemValue = this._systemValue;
         serializationObject.animationType = this._animationType;
-        serializationObject.visibleInInspector = this.visibleInInspector;
         serializationObject.min = this.min;
         serializationObject.max = this.max;
         serializationObject.isBoolean = this.isBoolean;
@@ -662,13 +716,13 @@ export class InputBlock extends NodeMaterialBlock {
     }
 
     public _deserialize(serializationObject: any, scene: Scene, rootUrl: string) {
+        this._mode = serializationObject.mode;
         super._deserialize(serializationObject, scene, rootUrl);
 
         this._type = serializationObject.type;
-        this._mode = serializationObject.mode;
+
         this._systemValue = serializationObject.systemValue || serializationObject.wellKnownValue;
         this._animationType = serializationObject.animationType;
-        this.visibleInInspector = serializationObject.visibleInInspector;
         this.min = serializationObject.min || 0;
         this.max = serializationObject.max || 0;
         this.isBoolean = !!serializationObject.isBoolean;

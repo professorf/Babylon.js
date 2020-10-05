@@ -11,6 +11,7 @@ import { DeepCopier } from "../Misc/deepCopier";
 import { TransformNode } from './transformNode';
 import { Light } from '../Lights/light';
 import { VertexBuffer } from './buffer';
+import { BoundingInfo } from '../Culling/boundingInfo';
 
 Mesh._instancedMeshFactory = (name: string, mesh: Mesh): InstancedMesh => {
     let instance = new InstancedMesh(name, mesh);
@@ -53,7 +54,7 @@ export class InstancedMesh extends AbstractMesh {
             this.rotationQuaternion = source.rotationQuaternion.clone();
         }
 
-        this.animations = source.animations;
+        this.animations = Array.from(source.animations);
         for (var range of source.getAnimationRanges()) {
             if (range != null) {
                 this.createAnimationRange(range.name, range.from, range.to);
@@ -157,6 +158,16 @@ export class InstancedMesh extends AbstractMesh {
      */
     public get sourceMesh(): Mesh {
         return this._sourceMesh;
+    }
+
+    /**
+     * Creates a new InstancedMesh object from the mesh model.
+     * @see https://doc.babylonjs.com/how_to/how_to_use_instances
+     * @param name defines the name of the new instance
+     * @returns a new InstancedMesh
+     */
+    public createInstance(name: string): InstancedMesh {
+        return this._sourceMesh.createInstance(name);
     }
 
     /**
@@ -330,7 +341,12 @@ export class InstancedMesh extends AbstractMesh {
 
     /** @hidden */
     public _postActivate(): void {
-        if (this._edgesRenderer && this._edgesRenderer.isEnabled && this._sourceMesh._renderingGroup) {
+        if (this._sourceMesh.edgesShareWithInstances && this._sourceMesh._edgesRenderer && this._sourceMesh._edgesRenderer.isEnabled && this._sourceMesh._renderingGroup) {
+            // we are using the edge renderer of the source mesh
+            this._sourceMesh._renderingGroup._edgesRenderers.pushNoDuplicate(this._sourceMesh._edgesRenderer);
+            this._sourceMesh._edgesRenderer.customInstances.push(this.getWorldMatrix());
+        } else if (this._edgesRenderer && this._edgesRenderer.isEnabled && this._sourceMesh._renderingGroup) {
+            // we are using the edge renderer defined for this instance
             this._sourceMesh._renderingGroup._edgesRenderers.push(this._edgesRenderer);
         }
     }
@@ -394,6 +410,19 @@ export class InstancedMesh extends AbstractMesh {
         return this._sourceMesh._generatePointsArray();
     }
 
+    /** @hidden */
+    public _updateBoundingInfo(): AbstractMesh {
+        const effectiveMesh = this as AbstractMesh;
+        if (this._boundingInfo) {
+            this._boundingInfo.update(effectiveMesh.worldMatrixFromCache);
+        }
+        else {
+            this._boundingInfo = new BoundingInfo(this.absolutePosition, this.absolutePosition, effectiveMesh.worldMatrixFromCache);
+        }
+        this._updateSubMeshesBoundingInfo(effectiveMesh.worldMatrixFromCache);
+        return this;
+    }
+
     /**
      * Creates a new InstancedMesh from the current mesh.
      * - name (string) : the cloned mesh name
@@ -412,7 +441,7 @@ export class InstancedMesh extends AbstractMesh {
             "sourceMesh", "isAnInstance", "facetNb", "isFacetDataEnabled",
             "isBlocked", "useBones", "hasInstances", "collider", "edgesRenderer",
             "forward", "up", "right", "absolutePosition", "absoluteScaling", "absoluteRotationQuaternion",
-            "isWorldMatrixFrozen", "nonUniformScaling", "behaviors", "worldMatrixFromCache"
+            "isWorldMatrixFrozen", "nonUniformScaling", "behaviors", "worldMatrixFromCache", "hasThinInstances"
         ], []);
 
         // Bounding info
@@ -460,6 +489,11 @@ declare module "./mesh" {
          */
         registerInstancedBuffer(kind: string, stride: number): void;
 
+        /**
+         * true to use the edge renderer for all instances of this mesh
+         */
+        edgesShareWithInstances: boolean;
+
         /** @hidden */
         _userInstancedBuffersStorage: {
             data: {[key: string]: Float32Array},
@@ -479,6 +513,8 @@ declare module "./abstractMesh" {
         instancedBuffers: {[key: string]: any};
     }
 }
+
+Mesh.prototype.edgesShareWithInstances = false;
 
 Mesh.prototype.registerInstancedBuffer = function(kind: string, stride: number): void {
     // Remove existing one

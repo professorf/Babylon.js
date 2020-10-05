@@ -1,10 +1,12 @@
 import * as React from "react";
 import { Color4, Color3 } from 'babylonjs/Maths/math.color';
 import { SketchPicker } from 'react-color';
+import { GlobalState } from '../globalState';
 
 export interface IColorPickerComponentProps {
     value: Color4 | Color3;
     onColorChanged: (newOne: string) => void;
+    globalState: GlobalState;
     disableAlpha?: boolean;
 }
 
@@ -57,10 +59,21 @@ export class ColorPickerLineComponent extends React.Component<IColorPickerCompon
     }
 
     shouldComponentUpdate(nextProps: IColorPickerComponentProps, nextState: IColorPickerComponentState) {
-        return nextProps.value.toHexString() !== this.props.value.toHexString() 
+        let result = nextProps.value.toHexString() !== this.props.value.toHexString() 
             || nextProps.disableAlpha !== this.props.disableAlpha 
             || nextState.hex !== this.state.hex
             || nextState.pickerEnabled !== this.state.pickerEnabled;
+        
+        if(result) {
+            nextState.color =  {
+                r: nextProps.value.r * 255,
+                g: nextProps.value.g * 255,
+                b: nextProps.value.b * 255,
+                a: nextProps.value instanceof Color4 ? nextProps.value.a : 1,
+            };
+            nextState.hex = nextProps.value.toHexString();
+        }
+        return result;   
     }
 
     componentDidUpdate() {
@@ -71,20 +84,27 @@ export class ColorPickerLineComponent extends React.Component<IColorPickerCompon
         this.syncPositions();
     }
 
+    setPickerState(enabled: boolean) {
+        this.setState({ pickerEnabled: enabled });
+        this.props.globalState.blockKeyboardEvents = enabled;
+    }
+
     render() {
         var color = this.state.color;
+
+        this.props.globalState.blockKeyboardEvents = this.state.pickerEnabled;
 
         return (
             <div className="color-picker">
                 <div className="color-rect"  ref={this._floatHostRef} 
                     style={{background: this.state.hex}} 
-                    onClick={() => this.setState({pickerEnabled: true})}>
+                    onClick={() => this.setPickerState(true)}>
 
                 </div>
                 {
                     this.state.pickerEnabled &&
                     <>
-                        <div className="color-picker-cover" onClick={() => this.setState({pickerEnabled: false})}></div>
+                        <div className="color-picker-cover" onClick={() => this.setPickerState(false)}></div>
                         <div className="color-picker-float" ref={this._floatRef}>
                             <SketchPicker color={color} 
                                 disableAlpha={this.props.disableAlpha}

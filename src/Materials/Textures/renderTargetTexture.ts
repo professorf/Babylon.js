@@ -81,7 +81,7 @@ export class RenderTargetTexture extends Texture {
 
             var result = oldPush.apply(array, items);
 
-            if (wasEmpty) {
+            if (wasEmpty && this.getScene()) {
                 this.getScene()!.meshes.forEach((mesh) => {
                     mesh._markSubMeshesAsLightDirty();
                 });
@@ -112,10 +112,6 @@ export class RenderTargetTexture extends Texture {
      * Define if sprites should be rendered in your texture.
      */
     public renderSprites = false;
-    /**
-     * Override the default coordinates mode to projection for RTT as it is the most common case for rendered textures.
-     */
-    public coordinatesMode = Texture.PROJECTION_MODE;
     /**
      * Define the camera used to render the texture.
      */
@@ -230,7 +226,7 @@ export class RenderTargetTexture extends Texture {
     public _generateMipMaps: boolean;
     protected _renderingManager: RenderingManager;
     /** @hidden */
-    public _waitingRenderList: string[];
+    public _waitingRenderList?: string[];
     protected _doNotChangeAspectRatio: boolean;
     protected _currentRefreshId = -1;
     protected _refreshRate = 1;
@@ -243,8 +239,6 @@ export class RenderTargetTexture extends Texture {
     public get renderTargetOptions(): RenderTargetCreationOptions {
         return this._renderTargetOptions;
     }
-
-    protected _engine: Engine;
 
     protected _onRatioRescale(): void {
         if (this._sizeRatio) {
@@ -306,16 +300,15 @@ export class RenderTargetTexture extends Texture {
      * @param format The internal format of the buffer in the RTT (RED, RG, RGB, RGBA, ALPHA...)
      * @param delayAllocation if the texture allocation should be delayed (default: false)
      */
-    constructor(name: string, size: number | { width: number, height: number, layers?: number } | { ratio: number }, scene: Nullable<Scene>, generateMipMaps?: boolean, doNotChangeAspectRatio: boolean = true, type: number = Constants.TEXTURETYPE_UNSIGNED_INT, public isCube = false, samplingMode = Texture.TRILINEAR_SAMPLINGMODE, generateDepthBuffer = true, generateStencilBuffer = false, isMulti = false, format = Constants.TEXTUREFORMAT_RGBA, delayAllocation = false) {
+    constructor(name: string, size: number | { width: number, height: number, layers?: number } | { ratio: number }, scene: Nullable<Scene>, generateMipMaps?: boolean, doNotChangeAspectRatio: boolean = true, type: number = Constants.TEXTURETYPE_UNSIGNED_INT, isCube = false, samplingMode = Texture.TRILINEAR_SAMPLINGMODE, generateDepthBuffer = true, generateStencilBuffer = false, isMulti = false, format = Constants.TEXTUREFORMAT_RGBA, delayAllocation = false) {
         super(null, scene, !generateMipMaps);
         scene = this.getScene();
-
         if (!scene) {
             return;
         }
 
+        this._coordinatesMode = Texture.PROJECTION_MODE;
         this.renderList = new Array<AbstractMesh>();
-        this._engine = scene.getEngine();
         this.name = name;
         this.isRenderTarget = true;
         this._initialSizeParameter = size;
@@ -386,9 +379,10 @@ export class RenderTargetTexture extends Texture {
     private _processSizeParameter(size: number | { width: number, height: number } | { ratio: number }): void {
         if ((<{ ratio: number }>size).ratio) {
             this._sizeRatio = (<{ ratio: number }>size).ratio;
+            const engine = this._getEngine()!;
             this._size = {
-                width: this._bestReflectionRenderTargetDimension(this._engine.getRenderWidth(), this._sizeRatio),
-                height: this._bestReflectionRenderTargetDimension(this._engine.getRenderHeight(), this._sizeRatio)
+                width: this._bestReflectionRenderTargetDimension(engine.getRenderWidth(), this._sizeRatio),
+                height: this._bestReflectionRenderTargetDimension(engine.getRenderHeight(), this._sizeRatio)
             };
         } else {
             this._size = <number | { width: number, height: number, layers?: number }>size;
@@ -647,7 +641,7 @@ export class RenderTargetTexture extends Texture {
                 }
             }
 
-            delete this._waitingRenderList;
+            this._waitingRenderList = undefined;
         }
 
         // Is predicate defined?

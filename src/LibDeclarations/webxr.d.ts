@@ -1,43 +1,20 @@
-type XRSessionMode =
-    | "inline"
-    | "immersive-vr"
-    | "immersive-ar";
+type XRSessionMode = "inline" | "immersive-vr" | "immersive-ar";
 
-type XRReferenceSpaceType =
-    | "viewer"
-    | "local"
-    | "local-floor"
-    | "bounded-floor"
-    | "unbounded";
+type XRReferenceSpaceType = "viewer" | "local" | "local-floor" | "bounded-floor" | "unbounded";
 
-type XREnvironmentBlendMode =
-    | "opaque"
-    | "additive"
-    | "alpha-blend";
+type XREnvironmentBlendMode = "opaque" | "additive" | "alpha-blend";
 
-type XRVisibilityState =
-    | "visible"
-    | "visible-blurred"
-    | "hidden";
+type XRVisibilityState = "visible" | "visible-blurred" | "hidden";
 
-type XRHandedness =
-    | "none"
-    | "left"
-    | "right";
+type XRHandedness = "none" | "left" | "right";
 
-type XRTargetRayMode =
-    | "gaze"
-    | "tracked-pointer"
-    | "screen";
+type XRTargetRayMode = "gaze" | "tracked-pointer" | "screen";
 
-type XREye =
-    | "none"
-    | "left"
-    | "right";
+type XREye = "none" | "left" | "right";
 
-interface XRSpace extends EventTarget {
+type XREventType = "devicechange" | "visibilitychange" | "end" | "inputsourceschange" | "select" | "selectstart" | "selectend" | "squeeze" | "squeezestart" | "squeezeend" | "reset";
 
-}
+interface XRSpace extends EventTarget {}
 
 interface XRRenderState {
     depthNear?: number;
@@ -53,14 +30,15 @@ interface XRInputSource {
     gripSpace: XRSpace | undefined;
     gamepad: Gamepad | undefined;
     profiles: Array<string>;
+    hand: XRHand | undefined;
 }
 
 interface XRSessionInit {
-    optionalFeatures?: XRReferenceSpaceType[];
-    requiredFeatures?: XRReferenceSpaceType[];
+    optionalFeatures?: string[];
+    requiredFeatures?: string[];
 }
 
-interface XRSession extends XRAnchorCreator {
+interface XRSession {
     addEventListener: Function;
     removeEventListener: Function;
     requestReferenceSpace(type: XRReferenceSpaceType): Promise<XRReferenceSpace>;
@@ -78,9 +56,7 @@ interface XRSession extends XRAnchorCreator {
     requestHitTest(ray: XRRay, referenceSpace: XRReferenceSpace): Promise<XRHitResult[]>;
 
     // legacy plane detection
-    updateWorldTrackingState(options: {
-        planeDetectionState?: { enabled: boolean; }
-    }): void;
+    updateWorldTrackingState(options: { planeDetectionState?: { enabled: boolean } }): void;
 }
 
 interface XRReferenceSpace extends XRSpace {
@@ -97,14 +73,17 @@ interface XRFrame {
     getPose(space: XRSpace, baseSpace: XRSpace): XRPose | undefined;
 
     // AR
-    getHitTestResults(hitTestSource: XRHitTestSource): Array<XRHitTestResult> ;
+    getHitTestResults(hitTestSource: XRHitTestSource): Array<XRHitTestResult>;
     getHitTestResultsForTransientInput(hitTestSource: XRTransientInputHitTestSource): Array<XRTransientInputHitTestResult>;
     // Anchors
     trackedAnchors?: XRAnchorSet;
+    createAnchor(pose: XRRigidTransform, space: XRSpace): Promise<XRAnchor>;
     // Planes
     worldInformation: {
         detectedPlanes?: XRPlaneSet;
     };
+    // Hand tracking
+    getJointPose(joint: XRJointSpace, baseSpace: XRSpace): XRJointPose;
 }
 
 interface XRViewerPose extends XRPose {
@@ -127,7 +106,7 @@ interface XRWebGLLayerOptions {
 
 declare var XRWebGLLayer: {
     prototype: XRWebGLLayer;
-    new(session: XRSession, context: WebGLRenderingContext | undefined, options?: XRWebGLLayerOptions): XRWebGLLayer;
+    new (session: XRSession, context: WebGLRenderingContext | undefined, options?: XRWebGLLayerOptions): XRWebGLLayer;
 };
 interface XRWebGLLayer {
     framebuffer: WebGLFramebuffer;
@@ -171,7 +150,8 @@ declare class XRRay {
 
 declare enum XRHitTestTrackableType {
     "point",
-    "plane"
+    "plane",
+    "mesh",
 }
 
 interface XRHitResult {
@@ -185,6 +165,8 @@ interface XRTransientInputHitTestResult {
 
 interface XRHitTestResult {
     getPose(baseSpace: XRSpace): XRPose | undefined;
+    // When anchor system is enabled
+    createAnchor?(pose: XRRigidTransform): Promise<XRAnchor>;
 }
 
 interface XRHitTestSource {
@@ -208,21 +190,58 @@ interface XRTransientInputHitTestOptionsInit {
 }
 
 interface XRAnchor {
-    // remove?
-    id?: string;
     anchorSpace: XRSpace;
-    lastChangedTime: number;
-    detach(): void;
+    delete(): void;
 }
 
-interface XRPlane extends XRAnchorCreator {
+interface XRPlane {
     orientation: "Horizontal" | "Vertical";
     planeSpace: XRSpace;
     polygon: Array<DOMPointReadOnly>;
     lastChangedTime: number;
 }
 
-interface XRAnchorCreator {
-    // AR Anchors
-    createAnchor(pose: XRPose | XRRigidTransform, referenceSpace: XRReferenceSpace): Promise<XRAnchor>;
+interface XRJointSpace extends XRSpace {}
+
+interface XRJointPose extends XRPose {
+    radius: number | undefined;
+}
+
+interface XRHand /*extends Iterablele<XRJointSpace>*/ {
+    readonly length: number;
+
+    [index: number]: XRJointSpace;
+
+    // Specs have the function 'joint(idx: number)', but chrome doesn't support it yet.
+
+    readonly WRIST: number;
+
+    readonly THUMB_METACARPAL: number;
+    readonly THUMB_PHALANX_PROXIMAL: number;
+    readonly THUMB_PHALANX_DISTAL: number;
+    readonly THUMB_PHALANX_TIP: number;
+
+    readonly INDEX_METACARPAL: number;
+    readonly INDEX_PHALANX_PROXIMAL: number;
+    readonly INDEX_PHALANX_INTERMEDIATE: number;
+    readonly INDEX_PHALANX_DISTAL: number;
+    readonly INDEX_PHALANX_TIP: number;
+
+    readonly MIDDLE_METACARPAL: number;
+    readonly MIDDLE_PHALANX_PROXIMAL: number;
+    readonly MIDDLE_PHALANX_INTERMEDIATE: number;
+    readonly MIDDLE_PHALANX_DISTAL: number;
+    readonly MIDDLE_PHALANX_TIP: number;
+
+    readonly RING_METACARPAL: number;
+    readonly RING_PHALANX_PROXIMAL: number;
+    readonly RING_PHALANX_INTERMEDIATE: number;
+    readonly RING_PHALANX_DISTAL: number;
+    readonly RING_PHALANX_TIP: number;
+
+    readonly LITTLE_METACARPAL: number;
+    readonly LITTLE_PHALANX_PROXIMAL: number;
+    readonly LITTLE_PHALANX_INTERMEDIATE: number;
+    readonly LITTLE_PHALANX_DISTAL: number;
+    readonly LITTLE_PHALANX_TIP: number;
 }

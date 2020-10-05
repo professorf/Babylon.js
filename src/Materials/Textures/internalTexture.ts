@@ -195,6 +195,8 @@ export class InternalTexture {
     /** @hidden */
     public _attachments: Nullable<number[]> = null;
     /** @hidden */
+    public _textureArray: Nullable<InternalTexture[]> = null;
+    /** @hidden */
     public _cachedCoordinatesMode: Nullable<number> = null;
     /** @hidden */
     public _cachedWrapU: Nullable<number> = null;
@@ -250,6 +252,9 @@ export class InternalTexture {
     public _webGLTexture: Nullable<WebGLTexture> = null;
     /** @hidden */
     public _references: number = 1;
+
+    /** @hidden */
+    public _gammaSpace: Nullable<boolean> = null;
 
     private _engine: ThinEngine;
 

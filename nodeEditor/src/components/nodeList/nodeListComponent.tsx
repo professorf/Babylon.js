@@ -3,6 +3,14 @@ import * as React from "react";
 import { GlobalState } from '../../globalState';
 import { LineContainerComponent } from '../../sharedComponents/lineContainerComponent';
 import { DraggableLineComponent } from '../../sharedComponents/draggableLineComponent';
+import { NodeMaterialModes } from 'babylonjs/Materials/Node/Enums/nodeMaterialModes';
+import { Observer } from 'babylonjs/Misc/observable';
+import { Nullable } from 'babylonjs/types';
+import { DraggableLineWithButtonComponent } from '../../sharedComponents/draggableLineWithButtonComponent';
+import { LineWithFileButtonComponent } from '../../sharedComponents/lineWithFileButtonComponent';
+import { Tools } from 'babylonjs/Misc/tools';
+const addButton = require("../../../imgs/add.svg");
+const deleteButton = require('../../../imgs/delete.svg');
 
 require("./nodeList.scss");
 
@@ -12,7 +20,9 @@ interface INodeListComponentProps {
 
 export class NodeListComponent extends React.Component<INodeListComponentProps, {filter: string}> {
 
-    private static _Tooltips:{[key: string]: string} = {
+    private _onResetRequiredObserver: Nullable<Observer<void>>;
+
+    private static _Tooltips: {[key: string]: string} = {
         "BonesBlock": "Provides a world matrix for each vertex, based on skeletal (bone/joint) animation",
         "MorphTargetsBlock": "Provides the final positions, normals, tangents, and uvs based on morph targets in a mesh",
         "AddBlock": "Adds the left and right inputs of the same type together",
@@ -76,10 +86,11 @@ export class NodeListComponent extends React.Component<INodeListComponentProps, 
         "CeilingBlock": "Outputs fractional values as the next higher whole number",
         "FloorBlock": "Outputs fractional values as the next lower whole number",
         "RoundBlock": "Outputs fractional values rounded to the nearest whole number",
+        "ModBlock": "Outputs the value of one parameter modulo another",
         "CameraPositionBlock": "Outputs a Vector3 position of the active scene camera",
         "FogBlock": "Applies fog to the scene with an increasing opacity based on distance from the camera",
         "FogColorBlock": "The system value for fog color pulled from the scene",
-        "ImageProcessingBlock": "Provides access to all of the Babylon image processing properties",        
+        "ImageProcessingBlock": "Provides access to all of the Babylon image processing properties",
         "LightBlock": "Outputs diffuse and specular contributions from one or more scene lights",
         "LightInformationBlock": "Provides the direction, color and intensity of a selected light based on its world position",
         "ReflectionTextureBlock": "Creates a reflection from the input texture",
@@ -115,59 +126,181 @@ export class NodeListComponent extends React.Component<INodeListComponentProps, 
         "SimplexPerlin3DBlock": "Creates a type of gradient noise with few directional artifacts.",
         "WorleyNoise3DBlock": "Creates a random pattern resembling cells.",
         "ReflectBlock": "Outputs the direction of the input vector reflected across the surface normal.",
-        "RefractBlock": "Outputs a direction simulating a deflection of the input vector.", 
-        "Rotate2dBlock": "Rotates UV coordinates around the W axis."
-    }
+        "RefractBlock": "Outputs a direction simulating a deflection of the input vector.",
+        "Rotate2dBlock": "Rotates UV coordinates around the W axis.",
+        "PBRMetallicRoughnessBlock": "PBR metallic/roughness material",
+        "SheenBlock": "PBR Sheen block",
+        "AmbientOcclusionBlock": "PBR Ambient occlusion block",
+        "ReflectivityBlock": "PBR Reflectivity block",
+        "AnisotropyBlock": "PBR Anisotropy block",
+        "ReflectionBlock": "PBR Reflection block",
+        "ClearCoatBlock": "PBR ClearCoat block",
+        "RefractionBlock": "PBR Refraction block",
+        "SubSurfaceBlock": "PBR SubSurface block",
+        "ScreenPositionBlock": "A Vector2 representing the position of each vertex of the screen quad (derived from UV set from the quad used to render)",
+        "CurrentScreenBlock": "The screen buffer used as input for the post process",
+        "ParticleUVBlock": "The particle uv texture coordinate",
+        "ParticleTextureBlock": "The particle texture",
+        "ParticleColorBlock": "The particle color",
+        "ParticleTextureMaskBlock": "The particle texture mask",
+        "ParticleRampGradientBlock": "The particle ramp gradient block",
+        "ParticleBlendMultiplyBlock": "The particle blend multiply block",
+        "ParticlePositionWorldBlock": "The world position of the particle",
+        "FragCoordBlock": "The gl_FragCoord predefined variable that contains the window relative coordinate (x, y, z, 1/w)",
+        "ScreenSizeBlock": "The size (in pixels) of the screen window",
+    };
+    
+    private _customFrameList: {[key: string]: string};
 
     constructor(props: INodeListComponentProps) {
         super(props);
 
         this.state = { filter: "" };
+
+        let frameJson = localStorage.getItem("Custom-Frame-List");
+        if(frameJson) {
+            this._customFrameList = JSON.parse(frameJson);
+        }
+
+        this._onResetRequiredObserver = this.props.globalState.onResetRequiredObservable.add(() => {
+            this.forceUpdate();
+        });
+    }
+
+    componentWillUnmount() {
+        this.props.globalState.onResetRequiredObservable.remove(this._onResetRequiredObserver);
     }
 
     filterContent(filter: string) {
         this.setState({ filter: filter });
     }
 
+    loadCustomFrame(file: File) {
+        Tools.ReadFile(file, async (data) => {
+            // get Frame Data from file
+            let decoder = new TextDecoder("utf-8");
+            const frameData = JSON.parse(decoder.decode(data));
+            let frameName = frameData.editorData.frames[0].name + "Custom";
+            let frameToolTip = frameData.editorData.frames[0].comments || "";
+
+            try {
+                localStorage.setItem(frameName, JSON.stringify(frameData));
+            } catch (error) {
+                this.props.globalState.onErrorMessageDialogRequiredObservable.notifyObservers("Error Saving Frame");
+                return;
+            }
+
+            let frameJson = localStorage.getItem("Custom-Frame-List");
+            let frameList:  {[key: string]: string} = {};
+            if(frameJson) {
+                frameList = JSON.parse(frameJson); 
+            }
+            frameList[frameName] = frameToolTip;
+            localStorage.setItem("Custom-Frame-List", JSON.stringify(frameList));
+                this._customFrameList = frameList;
+                this.forceUpdate();
+
+        }, undefined, true);
+    }
+
+    removeItem(value : string) : void {
+        let frameJson = localStorage.getItem("Custom-Frame-List");
+            if(frameJson) {
+                let frameList = JSON.parse(frameJson);
+                delete frameList[value];
+                localStorage.removeItem(value);
+                localStorage.setItem("Custom-Frame-List", JSON.stringify(frameList));
+                this._customFrameList = frameList;
+                this.forceUpdate();
+            }        
+    }
+
     render() {
+
+        let customFrameNames: string[] = [];
+        for(let frame in this._customFrameList){
+            customFrameNames.push(frame);
+        }
+        
         // Block types used to create the menu from
-        const allBlocks = {
-            
+        const allBlocks: any = {
+            Custom_Frames: customFrameNames,
             Animation: ["BonesBlock", "MorphTargetsBlock"],
             Color_Management: ["ReplaceColorBlock", "PosterizeBlock", "GradientBlock", "DesaturateBlock"],
             Conversion_Blocks: ["ColorMergerBlock", "ColorSplitterBlock", "VectorMergerBlock", "VectorSplitterBlock"],
-            Inputs: ["Float", "Vector2", "Vector3", "Vector4", "Color3", "Color4", "TextureBlock", "ReflectionTextureBlock", "TimeBlock", "DeltaTimeBlock"],
+            Inputs: ["Float", "Vector2", "Vector3", "Vector4", "Color3", "Color4", "TextureBlock", "ReflectionTextureBlock", "TimeBlock", "DeltaTimeBlock", "FragCoordBlock", "ScreenSizeBlock"],
             Interpolation: ["LerpBlock", "StepBlock", "SmoothStepBlock", "NLerpBlock"],
-            Math__Standard: ["AddBlock", "DivideBlock", "MaxBlock", "MinBlock", "MultiplyBlock", "NegateBlock", "OneMinusBlock", "ReciprocalBlock", "ScaleBlock", "SignBlock", "SqrtBlock", "SubtractBlock"], 
+            Math__Standard: ["AddBlock", "DivideBlock", "MaxBlock", "MinBlock", "ModBlock", "MultiplyBlock", "NegateBlock", "OneMinusBlock", "ReciprocalBlock", "ScaleBlock", "SignBlock", "SqrtBlock", "SubtractBlock"],
             Math__Scientific: ["AbsBlock", "ArcCosBlock", "ArcSinBlock", "ArcTanBlock", "ArcTan2Block", "CosBlock", "DegreesToRadiansBlock", "ExpBlock", "Exp2Block", "FractBlock", "LogBlock", "PowBlock", "RadiansToDegreesBlock", "SawToothWaveBlock", "SinBlock", "SquareWaveBlock", "TanBlock", "TriangleWaveBlock"],
             Math__Vector: ["CrossBlock", "DerivativeBlock", "DistanceBlock", "DotBlock", "FresnelBlock", "LengthBlock", "ReflectBlock", "RefractBlock", "Rotate2dBlock", "TransformBlock", ],
             Matrices: ["Matrix", "WorldMatrixBlock", "WorldViewMatrixBlock", "WorldViewProjectionMatrixBlock", "ViewMatrixBlock", "ViewProjectionMatrixBlock", "ProjectionMatrixBlock"],
-            Mesh: ["InstancesBlock", "PositionBlock", "UVBlock", "ColorBlock", "NormalBlock", "PerturbNormalBlock", "NormalBlendBlock" , "TangentBlock", "MatrixIndicesBlock", "MatrixWeightsBlock", "WorldPositionBlock", "WorldNormalBlock", "WorldTangentBlock", "FrontFacingBlock"], 
+            Mesh: ["InstancesBlock", "PositionBlock", "UVBlock", "ColorBlock", "NormalBlock", "PerturbNormalBlock", "NormalBlendBlock" , "TangentBlock", "MatrixIndicesBlock", "MatrixWeightsBlock", "WorldPositionBlock", "WorldNormalBlock", "WorldTangentBlock", "FrontFacingBlock"],
             Noises: ["RandomNumberBlock", "SimplexPerlin3DBlock", "WorleyNoise3DBlock"],
             Output_Nodes: ["VertexOutputBlock", "FragmentOutputBlock", "DiscardBlock"],
+            Particle: ["ParticleBlendMultiplyBlock", "ParticleColorBlock", "ParticlePositionWorldBlock", "ParticleRampGradientBlock", "ParticleTextureBlock", "ParticleTextureMaskBlock", "ParticleUVBlock"],
+            PBR: ["PBRMetallicRoughnessBlock", "AmbientOcclusionBlock", "AnisotropyBlock", "ClearCoatBlock", "ReflectionBlock", "ReflectivityBlock", "RefractionBlock", "SheenBlock", "SubSurfaceBlock"],
+            PostProcess: ["ScreenPositionBlock", "CurrentScreenBlock"],
+            Procedural__Texture: ["ScreenPositionBlock"],
             Range: ["ClampBlock", "RemapBlock", "NormalizeBlock"],
             Round: ["RoundBlock", "CeilingBlock", "FloorBlock"],
             Scene: ["FogBlock", "CameraPositionBlock", "FogColorBlock", "ImageProcessingBlock", "LightBlock", "LightInformationBlock", "ViewDirectionBlock"],
+        };
+
+        switch (this.props.globalState.mode) {
+            case NodeMaterialModes.Material:
+                delete allBlocks["PostProcess"];
+                delete allBlocks["Particle"];
+                delete allBlocks["Procedural__Texture"];
+                break;
+            case NodeMaterialModes.PostProcess:
+                delete allBlocks["Animation"];
+                delete allBlocks["Mesh"];
+                delete allBlocks["Particle"];
+                delete allBlocks["Procedural__Texture"];
+                break;
+            case NodeMaterialModes.ProceduralTexture:
+                delete allBlocks["Animation"];
+                delete allBlocks["Mesh"];  
+                delete allBlocks["Particle"];              
+                delete allBlocks["PostProcess"];
+                break;
+            case NodeMaterialModes.Particle:
+                delete allBlocks["Animation"];
+                delete allBlocks["Mesh"];
+                delete allBlocks["PostProcess"];            
+                delete allBlocks["Procedural__Texture"];
+                allBlocks.Output_Nodes.splice(allBlocks.Output_Nodes.indexOf("VertexOutputBlock"), 1);
+                break;
         }
 
         // Create node menu
-        var blockMenu = []
+        var blockMenu = [];
         for (var key in allBlocks) {
             var blockList = (allBlocks as any)[key].filter((b: string) => !this.state.filter || b.toLowerCase().indexOf(this.state.filter.toLowerCase()) !== -1)
             .sort((a: string, b: string) => a.localeCompare(b))
             .map((block: any, i: number) => {
-                let tooltip = NodeListComponent._Tooltips[block] || "";
+                if(key === "Custom_Frames") {
+                    return <DraggableLineWithButtonComponent key={block} data={block} tooltip={this._customFrameList[block] || ""} iconImage={deleteButton} iconTitle="Delete"
+                    onIconClick={ value => this.removeItem(value)}/>;
+                }
+                return <DraggableLineComponent key={block} data={block} tooltip={ NodeListComponent._Tooltips[block] || ""}/>;
 
-                return <DraggableLineComponent key={block} data={block} tooltip={tooltip}/>
             });
 
-            if (blockList.length) {
+            if(key === "Custom_Frames") {
+                let line =  <LineWithFileButtonComponent key="add..."title={"Add Custom Frame"} closed={false}
+                label="Add..." uploadName={'custom-frame-upload'} iconImage={addButton} accept=".json" onIconClick={(file) => {
+                    this.loadCustomFrame(file);
+                }}/>;
+                blockList.push(line);
+            }         
+            if(blockList.length) {
                 blockMenu.push(
                     <LineContainerComponent key={key + " blocks"} title={key.replace("__", ": ").replace("_", " ")} closed={false}>
                         {blockList}
                     </LineContainerComponent>
                 );
-            }
+           }
         }
 
         return (
@@ -175,9 +308,9 @@ export class NodeListComponent extends React.Component<INodeListComponentProps, 
                 <div className="panes">
                     <div className="pane">
                         <div className="filter">
-                            <input type="text" placeholder="Filter" 
+                            <input type="text" placeholder="Filter"
                                 onFocus={() => this.props.globalState.blockKeyboardEvents = true}
-                                onBlur={evt => {
+                                onBlur={(evt) => {
                                     this.props.globalState.blockKeyboardEvents = false;
                                 }}
                                 onChange={(evt) => this.filterContent(evt.target.value)} />
@@ -189,6 +322,5 @@ export class NodeListComponent extends React.Component<INodeListComponentProps, 
                 </div>
             </div>
         );
-
     }
 }

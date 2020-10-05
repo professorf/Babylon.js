@@ -1,7 +1,7 @@
 import { serialize, SerializationHelper } from "../../Misc/decorators";
 import { Observable } from "../../Misc/observable";
 import { Nullable } from "../../types";
-import { Matrix, Vector3 } from "../../Maths/math.vector";
+import { Matrix, TmpVectors, Vector3 } from "../../Maths/math.vector";
 import { BaseTexture } from "../../Materials/Textures/baseTexture";
 import { Constants } from "../../Engines/constants";
 import { _TypeStore } from '../../Misc/typeStore';
@@ -20,7 +20,7 @@ declare type Scene = import("../../scene").Scene;
 
 /**
  * This represents a texture in babylon. It can be easily loaded from a network, base64 or html input.
- * @see http://doc.babylonjs.com/babylon101/materials#texture
+ * @see https://doc.babylonjs.com/babylon101/materials#texture
  */
 export class Texture extends BaseTexture {
     /**
@@ -116,49 +116,49 @@ export class Texture extends BaseTexture {
 
     /**
      * Define an offset on the texture to offset the u coordinates of the UVs
-     * @see http://doc.babylonjs.com/how_to/more_materials#offsetting
+     * @see https://doc.babylonjs.com/how_to/more_materials#offsetting
      */
     @serialize()
     public uOffset = 0;
 
     /**
      * Define an offset on the texture to offset the v coordinates of the UVs
-     * @see http://doc.babylonjs.com/how_to/more_materials#offsetting
+     * @see https://doc.babylonjs.com/how_to/more_materials#offsetting
      */
     @serialize()
     public vOffset = 0;
 
     /**
      * Define an offset on the texture to scale the u coordinates of the UVs
-     * @see http://doc.babylonjs.com/how_to/more_materials#tiling
+     * @see https://doc.babylonjs.com/how_to/more_materials#tiling
      */
     @serialize()
     public uScale = 1.0;
 
     /**
      * Define an offset on the texture to scale the v coordinates of the UVs
-     * @see http://doc.babylonjs.com/how_to/more_materials#tiling
+     * @see https://doc.babylonjs.com/how_to/more_materials#tiling
      */
     @serialize()
     public vScale = 1.0;
 
     /**
      * Define an offset on the texture to rotate around the u coordinates of the UVs
-     * @see http://doc.babylonjs.com/how_to/more_materials
+     * @see https://doc.babylonjs.com/how_to/more_materials
      */
     @serialize()
     public uAng = 0;
 
     /**
      * Define an offset on the texture to rotate around the v coordinates of the UVs
-     * @see http://doc.babylonjs.com/how_to/more_materials
+     * @see https://doc.babylonjs.com/how_to/more_materials
      */
     @serialize()
     public vAng = 0;
 
     /**
      * Define an offset on the texture to rotate around the w coordinates of the UVs (in case of 3d texture)
-     * @see http://doc.babylonjs.com/how_to/more_materials
+     * @see https://doc.babylonjs.com/how_to/more_materials
      */
     @serialize()
     public wAng = 0;
@@ -180,6 +180,12 @@ export class Texture extends BaseTexture {
      */
     @serialize()
     public wRotationCenter = 0.5;
+
+    /**
+     * Sets this property to true to avoid deformations when rotating the texture with non-uniform scaling
+     */
+    @serialize()
+    public homogeneousRotationInUVTransform = false;
 
     /**
      * Are mip maps generated for this texture or not.
@@ -212,6 +218,10 @@ export class Texture extends BaseTexture {
     private _cachedVAng: number = -1;
     private _cachedWAng: number = -1;
     private _cachedProjectionMatrixId: number = -1;
+    private _cachedURotationCenter: number = -1;
+    private _cachedVRotationCenter: number = -1;
+    private _cachedWRotationCenter: number = -1;
+    private _cachedHomogeneousRotationInUVTransform: boolean = false;
     private _cachedCoordinatesMode: number = -1;
 
     /** @hidden */
@@ -224,6 +234,11 @@ export class Texture extends BaseTexture {
     private _delayedOnLoad: Nullable<() => void> = null;
     private _delayedOnError: Nullable<() => void> = null;
     private _mimeType?: string;
+
+    /** Returns the texture mime type if it was defined by a loader (undefined else) */
+    public get mimeType() {
+        return this._mimeType;
+    }
 
     /**
      * Observable triggered once the texture has been loaded.
@@ -264,9 +279,9 @@ export class Texture extends BaseTexture {
     /**
      * Instantiates a new texture.
      * This represents a texture in babylon. It can be easily loaded from a network, base64 or html input.
-     * @see http://doc.babylonjs.com/babylon101/materials#texture
+     * @see https://doc.babylonjs.com/babylon101/materials#texture
      * @param url defines the url of the picture to load as a texture
-     * @param scene defines the scene or engine the texture will belong to
+     * @param sceneOrEngine defines the scene or engine the texture will belong to
      * @param noMipmap defines if the texture will require mip maps or not
      * @param invertY defines if the texture needs to be inverted on the y axis during loading
      * @param samplingMode defines the sampling mode we want for the texture while fectching from it (Texture.NEAREST_SAMPLINGMODE...)
@@ -278,7 +293,7 @@ export class Texture extends BaseTexture {
      * @param mimeType defines an optional mime type information
      */
     constructor(url: Nullable<string>, sceneOrEngine: Nullable<Scene | ThinEngine>, noMipmap: boolean = false, invertY: boolean = true, samplingMode: number = Texture.TRILINEAR_SAMPLINGMODE, onLoad: Nullable<() => void> = null, onError: Nullable<(message?: string, exception?: any) => void> = null, buffer: Nullable<string | ArrayBuffer | ArrayBufferView | HTMLImageElement | Blob | ImageBitmap> = null, deleteBuffer: boolean = false, format?: number, mimeType?: string) {
-        super((sceneOrEngine && sceneOrEngine.getClassName() === "Scene") ? (sceneOrEngine as Scene) : null);
+        super(sceneOrEngine);
 
         this.name = url || "";
         this.url = url;
@@ -293,8 +308,7 @@ export class Texture extends BaseTexture {
         }
 
         var scene = this.getScene();
-        var engine = (sceneOrEngine && (sceneOrEngine as ThinEngine).getCaps) ? (sceneOrEngine as ThinEngine) : (scene ? scene.getEngine() : null);
-
+        var engine = this._getEngine();
         if (!engine) {
             return;
         }
@@ -347,7 +361,7 @@ export class Texture extends BaseTexture {
             if (!scene || !scene.useDelayedTextureLoading) {
                 this._texture = engine.createTexture(this.url, noMipmap, invertY, scene, samplingMode, load, onError, this._buffer, undefined, this._format, null, mimeType);
                 if (deleteBuffer) {
-                    delete this._buffer;
+                    this._buffer = null;
                 }
             } else {
                 this.delayLoadState = Constants.DELAYLOADSTATE_NOTLOADED;
@@ -399,7 +413,6 @@ export class Texture extends BaseTexture {
         }
 
         let scene = this.getScene();
-
         if (!scene) {
             return;
         }
@@ -410,7 +423,7 @@ export class Texture extends BaseTexture {
         if (!this._texture) {
             this._texture = scene.getEngine().createTexture(this.url, this._noMipmap, this._invertY, scene, this.samplingMode, this._delayedOnLoad, this._delayedOnError, this._buffer, null, this._format, null, this._mimeType);
             if (this._deleteBuffer) {
-                delete this._buffer;
+                this._buffer = null;
             }
         } else {
             if (this._delayedOnLoad) {
@@ -442,6 +455,22 @@ export class Texture extends BaseTexture {
     }
 
     /**
+     * Checks if the texture has the same transform matrix than another texture
+     * @param texture texture to check against
+     * @returns true if the transforms are the same, else false
+     */
+    public checkTransformsAreIdentical(texture: Nullable<Texture>): boolean {
+        return texture !== null &&
+                this.uOffset === texture.uOffset &&
+                this.vOffset === texture.vOffset &&
+                this.uScale === texture.uScale &&
+                this.vScale === texture.vScale &&
+                this.uAng === texture.uAng &&
+                this.vAng === texture.vAng &&
+                this.wAng === texture.wAng;
+    }
+
+    /**
      * Get the current texture matrix which includes the requested offsetting, tiling and rotation components.
      * @returns the transform matrix of the texture.
      */
@@ -453,7 +482,11 @@ export class Texture extends BaseTexture {
             this.vScale === this._cachedVScale &&
             this.uAng === this._cachedUAng &&
             this.vAng === this._cachedVAng &&
-            this.wAng === this._cachedWAng) {
+            this.wAng === this._cachedWAng &&
+            this.uRotationCenter === this._cachedURotationCenter &&
+            this.vRotationCenter === this._cachedVRotationCenter &&
+            this.wRotationCenter === this._cachedWRotationCenter &&
+            this.homogeneousRotationInUVTransform === this._cachedHomogeneousRotationInUVTransform) {
             return this._cachedTextureMatrix!;
         }
 
@@ -464,6 +497,10 @@ export class Texture extends BaseTexture {
         this._cachedUAng = this.uAng;
         this._cachedVAng = this.vAng;
         this._cachedWAng = this.wAng;
+        this._cachedURotationCenter = this.uRotationCenter;
+        this._cachedVRotationCenter = this.vRotationCenter;
+        this._cachedWRotationCenter = this.wRotationCenter;
+        this._cachedHomogeneousRotationInUVTransform = this.homogeneousRotationInUVTransform;
 
         if (!this._cachedTextureMatrix) {
             this._cachedTextureMatrix = Matrix.Zero();
@@ -475,20 +512,35 @@ export class Texture extends BaseTexture {
 
         Matrix.RotationYawPitchRollToRef(this.vAng, this.uAng, this.wAng, this._rowGenerationMatrix!);
 
-        this._prepareRowForTextureGeneration(0, 0, 0, this._t0!);
-        this._prepareRowForTextureGeneration(1.0, 0, 0, this._t1!);
-        this._prepareRowForTextureGeneration(0, 1.0, 0, this._t2!);
+        if (this.homogeneousRotationInUVTransform) {
+            Matrix.TranslationToRef(-this._cachedURotationCenter, -this._cachedVRotationCenter, -this._cachedWRotationCenter, TmpVectors.Matrix[0]);
+            Matrix.TranslationToRef(this._cachedURotationCenter, this._cachedVRotationCenter, this._cachedWRotationCenter, TmpVectors.Matrix[1]);
+            Matrix.ScalingToRef(this._cachedUScale, this._cachedVScale, 0, TmpVectors.Matrix[2]);
+            Matrix.TranslationToRef(this._cachedUOffset, this._cachedVOffset, 0, TmpVectors.Matrix[3]);
 
-        this._t1!.subtractInPlace(this._t0!);
-        this._t2!.subtractInPlace(this._t0!);
+            TmpVectors.Matrix[0].multiplyToRef(this._rowGenerationMatrix!, this._cachedTextureMatrix);
+            this._cachedTextureMatrix.multiplyToRef(TmpVectors.Matrix[1], this._cachedTextureMatrix);
+            this._cachedTextureMatrix.multiplyToRef(TmpVectors.Matrix[2], this._cachedTextureMatrix);
+            this._cachedTextureMatrix.multiplyToRef(TmpVectors.Matrix[3], this._cachedTextureMatrix);
 
-        Matrix.FromValuesToRef(
-            this._t1!.x, this._t1!.y, this._t1!.z, 0.0,
-            this._t2!.x, this._t2!.y, this._t2!.z, 0.0,
-            this._t0!.x, this._t0!.y, this._t0!.z, 0.0,
-            0.0, 0.0, 0.0, 1.0,
-            this._cachedTextureMatrix
-        );
+            // copy the translation row to the 3rd row of the matrix so that we don't need to update the shaders (which expects the translation to be on the 3rd row)
+            this._cachedTextureMatrix.setRowFromFloats(2, this._cachedTextureMatrix.m[12], this._cachedTextureMatrix.m[13], this._cachedTextureMatrix.m[14], 1);
+        } else {
+            this._prepareRowForTextureGeneration(0, 0, 0, this._t0!);
+            this._prepareRowForTextureGeneration(1.0, 0, 0, this._t1!);
+            this._prepareRowForTextureGeneration(0, 1.0, 0, this._t2!);
+
+            this._t1!.subtractInPlace(this._t0!);
+            this._t2!.subtractInPlace(this._t0!);
+
+            Matrix.FromValuesToRef(
+                this._t1!.x, this._t1!.y, this._t1!.z, 0.0,
+                this._t2!.x, this._t2!.y, this._t2!.z, 0.0,
+                this._t0!.x, this._t0!.y, this._t0!.z, 0.0,
+                0.0, 0.0, 0.0, 1.0,
+                this._cachedTextureMatrix
+            );
+        }
 
         let scene = this.getScene();
 
@@ -708,7 +760,13 @@ export class Texture extends BaseTexture {
                 if (parsedTexture.base64String) {
                     texture = Texture.CreateFromBase64String(parsedTexture.base64String, parsedTexture.name, scene, !generateMipMaps, parsedTexture.invertY);
                 } else {
-                    let url = rootUrl + parsedTexture.name;
+                    let url: string;
+                    if (parsedTexture.name && parsedTexture.name.indexOf("://") > 0) {
+                        url = parsedTexture.name;
+                    }
+                    else {
+                        url = rootUrl + parsedTexture.name;
+                    }
 
                     if (StringTools.StartsWith(parsedTexture.url, "data:") || (Texture.UseSerializedUrlIfAny && parsedTexture.url)) {
                         url = parsedTexture.url;
@@ -792,4 +850,5 @@ export class Texture extends BaseTexture {
 }
 
 // References the dependencies.
+_TypeStore.RegisteredTypes["BABYLON.Texture"] = Texture;
 SerializationHelper._TextureParser = Texture.Parse;

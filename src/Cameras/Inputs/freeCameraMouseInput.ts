@@ -6,7 +6,7 @@ import { FreeCamera } from "../../Cameras/freeCamera";
 import { PointerInfo, PointerEventTypes } from "../../Events/pointerEvents";
 /**
  * Manage the mouse inputs to control the movement of a free camera.
- * @see http://doc.babylonjs.com/how_to/customizing_camera_inputs
+ * @see https://doc.babylonjs.com/how_to/customizing_camera_inputs
  */
 export class FreeCameraMouseInput implements ICameraInput<FreeCamera> {
     /**
@@ -42,7 +42,7 @@ export class FreeCameraMouseInput implements ICameraInput<FreeCamera> {
     public _allowCameraRotation = true;
     /**
      * Manage the mouse inputs to control the movement of a free camera.
-     * @see http://doc.babylonjs.com/how_to/customizing_camera_inputs
+     * @see https://doc.babylonjs.com/how_to/customizing_camera_inputs
      * @param touchEnabled Defines if touch is enabled or not
      */
     constructor(
@@ -94,6 +94,11 @@ export class FreeCameraMouseInput implements ICameraInput<FreeCamera> {
                         evt.preventDefault();
                         element.focus();
                     }
+
+                    // This is required to move while pointer button is down
+                    if (engine.isPointerLock && this._onMouseMove) {
+                        this._onMouseMove(p.event);
+                    }
                 }
                 else if (p.type === PointerEventTypes.POINTERUP && srcElement) {
                     try {
@@ -109,7 +114,11 @@ export class FreeCameraMouseInput implements ICameraInput<FreeCamera> {
                 }
 
                 else if (p.type === PointerEventTypes.POINTERMOVE) {
-                    if (!this.previousPosition || engine.isPointerLock) {
+                    if (!this.previousPosition) {
+                        if (engine.isPointerLock && this._onMouseMove) {
+                            this._onMouseMove(p.event);
+                        }
+
                         return;
                     }
 
@@ -161,7 +170,6 @@ export class FreeCameraMouseInput implements ICameraInput<FreeCamera> {
         };
 
         this._observer = this.camera.getScene().onPointerObservable.add(this._pointerInput, PointerEventTypes.POINTERDOWN | PointerEventTypes.POINTERUP | PointerEventTypes.POINTERMOVE);
-        element.addEventListener("mousemove", this._onMouseMove, false);
 
         element.addEventListener("contextmenu",
             <EventListener>this.onContextMenu.bind(this), false);
@@ -182,10 +190,6 @@ export class FreeCameraMouseInput implements ICameraInput<FreeCamera> {
     public detachControl(element: Nullable<HTMLElement>): void {
         if (this._observer && element) {
             this.camera.getScene().onPointerObservable.remove(this._observer);
-
-            if (this._onMouseMove) {
-                element.removeEventListener("mousemove", this._onMouseMove);
-            }
 
             if (this.onContextMenu) {
                 element.removeEventListener("contextmenu", <EventListener>this.onContextMenu);

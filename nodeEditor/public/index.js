@@ -123,7 +123,22 @@ if (BABYLON.Engine.isSupported()) {
 
     // Set to default
     if (!location.hash) {
-        nodeMaterial.setToDefault();
+        const mode = BABYLON.DataStorage.ReadNumber("Mode", BABYLON.NodeMaterialModes.Material);
+        
+        switch (mode) {
+            case BABYLON.NodeMaterialModes.Material:
+                nodeMaterial.setToDefault();
+                break;
+            case BABYLON.NodeMaterialModes.PostProcess:
+                nodeMaterial.setToDefaultPostProcess();
+                break;
+            case BABYLON.NodeMaterialModes.Particle:
+                nodeMaterial.setToDefaultParticle();
+                break;                
+            case BABYLON.NodeMaterialModes.ProceduralTexture:
+                nodeMaterial.setToDefaultProceduralTexture();
+                break;
+        }
         nodeMaterial.build(true);
         showEditor();
     }

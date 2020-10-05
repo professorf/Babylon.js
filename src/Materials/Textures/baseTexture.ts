@@ -1,4 +1,4 @@
-import { serialize, SerializationHelper, serializeAsTexture, expandToProperty } from "../../Misc/decorators";
+import { serialize, SerializationHelper, serializeAsTexture } from "../../Misc/decorators";
 import { Observer, Observable } from "../../Misc/observable";
 import { Nullable } from "../../types";
 import { Scene } from "../../scene";
@@ -11,6 +11,7 @@ import { GUID } from '../../Misc/guid';
 import { ISize, Size } from '../../Maths/math.size';
 
 import "../../Misc/fileTools";
+import { ThinEngine } from '../../Engines/thinEngine';
 
 declare type Animation = import("../../Animations/animation").Animation;
 
@@ -89,7 +90,7 @@ export class BaseTexture implements IAnimatable {
     public coordinatesIndex = 0;
 
     @serialize("coordinatesMode")
-    private _coordinatesMode = Constants.TEXTURE_EXPLICIT_MODE;
+    protected _coordinatesMode = Constants.TEXTURE_EXPLICIT_MODE;
 
     /**
     * How a texture is mapped.
@@ -120,6 +121,7 @@ export class BaseTexture implements IAnimatable {
         return this._coordinatesMode;
     }
 
+    private _wrapU = Constants.TEXTURE_WRAP_ADDRESSMODE;
     /**
     * | Value | Type               | Description |
     * | ----- | ------------------ | ----------- |
@@ -128,8 +130,15 @@ export class BaseTexture implements IAnimatable {
     * | 2     | MIRROR_ADDRESSMODE |             |
     */
     @serialize()
-    public wrapU = Constants.TEXTURE_WRAP_ADDRESSMODE;
+    public get wrapU() {
+        return this._wrapU;
+    }
 
+    public set wrapU(value: number) {
+        this._wrapU = value;
+    }
+
+    private _wrapV = Constants.TEXTURE_WRAP_ADDRESSMODE;
     /**
     * | Value | Type               | Description |
     * | ----- | ------------------ | ----------- |
@@ -138,7 +147,13 @@ export class BaseTexture implements IAnimatable {
     * | 2     | MIRROR_ADDRESSMODE |             |
     */
     @serialize()
-    public wrapV = Constants.TEXTURE_WRAP_ADDRESSMODE;
+    public get wrapV() {
+        return this._wrapV;
+    }
+
+    public set wrapV(value: number) {
+        this._wrapV = value;
+    }
 
     /**
     * | Value | Type               | Description |
@@ -218,14 +233,41 @@ export class BaseTexture implements IAnimatable {
         this._texture.is2DArray = value;
     }
 
+    private _gammaSpace = true;
     /**
      * Define if the texture contains data in gamma space (most of the png/jpg aside bump).
      * HDR texture are usually stored in linear space.
      * This only impacts the PBR and Background materials
      */
     @serialize()
-    @expandToProperty("_markAllSubMeshesAsTexturesDirty")
-    public gammaSpace = true;
+    public get gammaSpace(): boolean {
+        if (!this._texture) {
+            return this._gammaSpace;
+        } else {
+            if (this._texture._gammaSpace === null) {
+                this._texture._gammaSpace = this._gammaSpace;
+            }
+        }
+
+        return this._texture._gammaSpace;
+    }
+
+    public set gammaSpace(gamma: boolean) {
+        if (!this._texture) {
+            if (this._gammaSpace === gamma) {
+                return;
+            }
+
+            this._gammaSpace = gamma;
+        } else {
+            if (this._texture._gammaSpace === gamma) {
+                return;
+            }
+            this._texture._gammaSpace = gamma;
+        }
+
+        this._markAllSubMeshesAsTexturesDirty();
+    }
 
     /**
      * Gets or sets whether or not the texture contains RGBD data.
@@ -328,6 +370,9 @@ export class BaseTexture implements IAnimatable {
         return this._uid;
     }
 
+    /** @hidden */
+    public _prefiltered: boolean = false;
+
     /**
      * Return a string representation of the texture.
      * @returns the texture as a string
@@ -371,7 +416,8 @@ export class BaseTexture implements IAnimatable {
      */
     public delayLoadState = Constants.DELAYLOADSTATE_NONE;
 
-    private _scene: Nullable<Scene> = null;
+    protected _scene: Nullable<Scene> = null;
+    protected _engine: Nullable<ThinEngine> = null;
 
     /** @hidden */
     public _texture: Nullable<InternalTexture> = null;
@@ -390,14 +436,27 @@ export class BaseTexture implements IAnimatable {
      * Base class of all the textures in babylon.
      * It groups all the common properties the materials, post process, lights... might need
      * in order to make a correct use of the texture.
-     * @param scene Define the scene the texture blongs to
+     * @param sceneOrEngine Define the scene or engine the texture blongs to
      */
-    constructor(scene: Nullable<Scene>) {
-        this._scene = scene || EngineStore.LastCreatedScene;
+    constructor(sceneOrEngine: Nullable<Scene | ThinEngine>) {
+        if (sceneOrEngine) {
+            if (BaseTexture._isScene(sceneOrEngine)) {
+                this._scene = sceneOrEngine;
+            }
+            else {
+                this._engine = sceneOrEngine;
+            }
+        }
+        else {
+            this._scene = EngineStore.LastCreatedScene;
+        }
+
         if (this._scene) {
             this.uniqueId = this._scene.getUniqueId();
             this._scene.addTexture(this);
+            this._engine = this._scene.getEngine();
         }
+
         this._uid = null;
     }
 
@@ -407,6 +466,20 @@ export class BaseTexture implements IAnimatable {
      */
     public getScene(): Nullable<Scene> {
         return this._scene;
+    }
+
+    /** @hidden */
+    protected _getEngine(): Nullable<ThinEngine> {
+        return this._engine;
+    }
+
+    /**
+     * Checks if the texture has the same transform matrix than another texture
+     * @param texture texture to check against
+     * @returns true if the transforms are the same, else false
+     */
+    public checkTransformsAreIdentical(texture: Nullable<BaseTexture>): boolean {
+        return texture !== null;
     }
 
     /**
@@ -499,41 +572,40 @@ export class BaseTexture implements IAnimatable {
     }
 
     /**
-           * Update the sampling mode of the texture.
-           * Default is Trilinear mode.
-           *
-           * | Value | Type               | Description |
-           * | ----- | ------------------ | ----------- |
-           * | 1     | NEAREST_SAMPLINGMODE or NEAREST_NEAREST_MIPLINEAR  | Nearest is: mag = nearest, min = nearest, mip = linear |
-           * | 2     | BILINEAR_SAMPLINGMODE or LINEAR_LINEAR_MIPNEAREST | Bilinear is: mag = linear, min = linear, mip = nearest |
-           * | 3     | TRILINEAR_SAMPLINGMODE or LINEAR_LINEAR_MIPLINEAR | Trilinear is: mag = linear, min = linear, mip = linear |
-           * | 4     | NEAREST_NEAREST_MIPNEAREST |             |
-           * | 5    | NEAREST_LINEAR_MIPNEAREST |             |
-           * | 6    | NEAREST_LINEAR_MIPLINEAR |             |
-           * | 7    | NEAREST_LINEAR |             |
-           * | 8    | NEAREST_NEAREST |             |
-           * | 9   | LINEAR_NEAREST_MIPNEAREST |             |
-           * | 10   | LINEAR_NEAREST_MIPLINEAR |             |
-           * | 11   | LINEAR_LINEAR |             |
-           * | 12   | LINEAR_NEAREST |             |
-           *
-           *    > _mag_: magnification filter (close to the viewer)
-           *    > _min_: minification filter (far from the viewer)
-           *    > _mip_: filter used between mip map levels
-           *@param samplingMode Define the new sampling mode of the texture
-           */
+     * Update the sampling mode of the texture.
+     * Default is Trilinear mode.
+     *
+     * | Value | Type               | Description |
+     * | ----- | ------------------ | ----------- |
+     * | 1     | NEAREST_SAMPLINGMODE or NEAREST_NEAREST_MIPLINEAR  | Nearest is: mag = nearest, min = nearest, mip = linear |
+     * | 2     | BILINEAR_SAMPLINGMODE or LINEAR_LINEAR_MIPNEAREST | Bilinear is: mag = linear, min = linear, mip = nearest |
+     * | 3     | TRILINEAR_SAMPLINGMODE or LINEAR_LINEAR_MIPLINEAR | Trilinear is: mag = linear, min = linear, mip = linear |
+     * | 4     | NEAREST_NEAREST_MIPNEAREST |             |
+     * | 5    | NEAREST_LINEAR_MIPNEAREST |             |
+     * | 6    | NEAREST_LINEAR_MIPLINEAR |             |
+     * | 7    | NEAREST_LINEAR |             |
+     * | 8    | NEAREST_NEAREST |             |
+     * | 9   | LINEAR_NEAREST_MIPNEAREST |             |
+     * | 10   | LINEAR_NEAREST_MIPLINEAR |             |
+     * | 11   | LINEAR_LINEAR |             |
+     * | 12   | LINEAR_NEAREST |             |
+     *
+     *    > _mag_: magnification filter (close to the viewer)
+     *    > _min_: minification filter (far from the viewer)
+     *    > _mip_: filter used between mip map levels
+     *@param samplingMode Define the new sampling mode of the texture
+     */
     public updateSamplingMode(samplingMode: number): void {
         if (!this._texture) {
             return;
         }
 
-        let scene = this.getScene();
-
-        if (!scene) {
+        const engine = this._getEngine();
+        if (!engine) {
             return;
         }
 
-        scene.getEngine().updateTextureSamplingMode(samplingMode, this._texture);
+        engine.updateTextureSamplingMode(samplingMode, this._texture);
     }
 
     /**
@@ -552,11 +624,12 @@ export class BaseTexture implements IAnimatable {
 
     /** @hidden */
     public _getFromCache(url: Nullable<string>, noMipmap: boolean, sampling?: number, invertY?: boolean): Nullable<InternalTexture> {
-        if (!this._scene) {
+        const engine = this._getEngine();
+        if (!engine) {
             return null;
         }
 
-        var texturesCache = this._scene.getEngine().getLoadedTexturesCache();
+        var texturesCache = engine.getLoadedTexturesCache();
         for (var index = 0; index < texturesCache.length; index++) {
             var texturesCacheEntry = texturesCache[index];
 
@@ -644,13 +717,11 @@ export class BaseTexture implements IAnimatable {
         var size = this.getSize();
         var width = size.width;
         var height = size.height;
-        let scene = this.getScene();
 
-        if (!scene) {
+        const engine = this._getEngine();
+        if (!engine) {
             return null;
         }
-
-        var engine = scene.getEngine();
 
         if (level != 0) {
             width = width / Math.pow(2, level);
@@ -660,11 +731,15 @@ export class BaseTexture implements IAnimatable {
             height = Math.round(height);
         }
 
-        if (this._texture.isCube) {
-            return engine._readTexturePixels(this._texture, width, height, faceIndex, level, buffer);
-        }
+        try {
+            if (this._texture.isCube) {
+                return engine._readTexturePixels(this._texture, width, height, faceIndex, level, buffer);
+            }
 
-        return engine._readTexturePixels(this._texture, width, height, -1, level, buffer);
+            return engine._readTexturePixels(this._texture, width, height, -1, level, buffer);
+        } catch (e) {
+            return null;
+        }
     }
 
     /**
@@ -719,6 +794,7 @@ export class BaseTexture implements IAnimatable {
                 this._scene.textures.splice(index, 1);
             }
             this._scene.onTextureRemovedObservable.notifyObservers(this);
+            this._scene = null;
         }
 
         if (this._texture === undefined) {
@@ -731,6 +807,8 @@ export class BaseTexture implements IAnimatable {
         // Callback
         this.onDisposeObservable.notifyObservers(this);
         this.onDisposeObservable.clear();
+
+        this._engine = null;
     }
 
     /**
@@ -785,5 +863,9 @@ export class BaseTexture implements IAnimatable {
                 }
             }
         }
+    }
+
+    private static _isScene(sceneOrEngine: Scene | ThinEngine): sceneOrEngine is Scene {
+        return sceneOrEngine.getClassName() === "Scene";
     }
 }
